@@ -43,7 +43,7 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
   // Case class for criteria/feature
   protected case class F(feat: Int, crit: Double) 
   // Case class for columnar data (dense and sparse version)
-  private case class ColumnarData(dense: RDD[(Int, (Int, Array[Byte]))], 
+  private case class ColumnarData(dense: RDD[((Int, Int), Array[Byte])], 
       sparse: RDD[(Int, BV[Byte])],
       isDense: Boolean)
 
@@ -191,7 +191,7 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
           mat(reg.features.size)(j) = classMap(reg.label)
           j += 1
         }
-        val chunks = for(i <- 0 until nFeatures) yield (i -> (index, mat(i)))
+        val chunks = for(i <- 0 until nFeatures) yield ((i, index) -> mat(i))
         chunks.toIterator
       })      
       
@@ -218,8 +218,7 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
       
       // Transform sparse data into a columnar format 
       // by grouping all values for the same feature in a single vector
-      val columnarData = sparseData.groupByKey(new HashPartitioner(np))
-        .mapValues({a => 
+      val columnarData = sparseData.groupByKey(new HashPartitioner(np)).mapValues({a => 
           if(a.size >= nInstances) {
             val init = Array.fill[Byte](nInstances.toInt)(0)
             val result: BV[Byte] = new BDV(init)
