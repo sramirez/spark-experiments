@@ -28,7 +28,7 @@ object MainMLlibTest {
 	  
 		val initStartTime = System.nanoTime()
 		
-		val conf = new SparkConf().setAppName("MLlibTest").setMaster("local[4]")
+		val conf = new SparkConf().setAppName("MLlibTest")
 		conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 		conf.set("spark.kryo.registrator", "org.ugr.sci2s.mllib.test.MLlibRegistrator")
 		val sc = new SparkContext(conf)
