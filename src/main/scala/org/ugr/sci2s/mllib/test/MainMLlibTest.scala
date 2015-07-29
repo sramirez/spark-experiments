@@ -28,7 +28,7 @@ object MainMLlibTest {
 	  
 		val initStartTime = System.nanoTime()
 		
-		val conf = new SparkConf().setAppName("MLlibTest")
+		val conf = new SparkConf().setAppName("MLlibTest").setMaster("local[4]")
 		conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 		conf.set("spark.kryo.registrator", "org.ugr.sci2s.mllib.test.MLlibRegistrator")
 		val sc = new SparkContext(conf)
@@ -142,7 +142,7 @@ object MainMLlibTest {
       val arity = header match {
             case Some(file) => 
               val c = KeelParser.parseHeaderFile(sc, file)
-              val categInfo = for(i <- 0 until c.size if !c(i).isDefinedAt("min")) yield (i, c(i).size) 
+              val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size) 
               categInfo.toMap
             case None => Map.empty[Int, Int]
       }
