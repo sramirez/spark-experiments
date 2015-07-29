@@ -19,7 +19,7 @@ object RandomForestAdapter extends ClassifierAdapter {
       val maxDepth = parameters.getOrElse("cls-maxDepth", "4")
       val maxBins = parameters.getOrElse("cls-maxBins", "100")
 		
-  		s"Algorithm: Decision Tree (DT)\n" + 
+  		s"Algorithm: Random Forest (RF)\n" + 
 			s"numClasses: $numClasses\n" +
       s"numTrees: $numTrees\n" +
       s"featureSubsetStrategy: $featSubSet\n" +
