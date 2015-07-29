@@ -15,7 +15,7 @@ object RandomForestAdapter extends ClassifierAdapter {
       val numClasses = parameters.getOrElse("cls-numClasses", "2")
       val impurity = parameters.getOrElse("cls-impurity", "gini")
       val featSubSet = parameters.getOrElse("cls-featureSubsetStrategy", "auto")
-      val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "10"), 10)
+      val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "100"), 100)
       val maxDepth = parameters.getOrElse("cls-maxDepth", "4")
       val maxBins = parameters.getOrElse("cls-maxBins", "100")
 		
@@ -24,7 +24,7 @@ object RandomForestAdapter extends ClassifierAdapter {
       s"numTrees: $numTrees\n" +
       s"featureSubsetStrategy: $featSubSet\n" +
 			s"impurity: $impurity\n" + 
-			s"maxDepth: $maxDepth\n" +
+      s"$maxBins: $maxBins\n" +
 			s"maxDepth: $maxDepth\n\n"		
 	}
   
@@ -32,7 +32,7 @@ object RandomForestAdapter extends ClassifierAdapter {
     val numClasses = MLEU.toInt(parameters.getOrElse("cls-numClasses", "2"), 2)
     val impurity = parameters.getOrElse("cls-impurity", "gini")
     val featSubSet = parameters.getOrElse("cls-featureSubsetStrategy", "auto")
-    val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "10"), 10)
+    val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "100"), 100)
     val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "4"), 4)
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "100"), 100)
     val categoricalFeaturesInfo = Map[Int, Int]()
@@ -46,7 +46,7 @@ object RandomForestAdapter extends ClassifierAdapter {
     val numClasses = MLEU.toInt(parameters.getOrElse("cls-numClasses", "2"), 2)
     val impurity = parameters.getOrElse("cls-impurity", "gini")
     val featSubSet = parameters.getOrElse("cls-featureSubsetStrategy", "auto")
-    val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "10"), 10)
+    val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "100"), 100)
     val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "4"), 4)
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "100"), 100)
     val model = RandomForest.trainClassifier(train, 
