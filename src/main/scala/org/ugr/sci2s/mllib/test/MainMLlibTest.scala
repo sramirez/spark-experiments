@@ -138,14 +138,19 @@ object MainMLlibTest {
 				  }
 			}
       
-          // Classification
+      // Classification
       val (algoInfo, classification) = params.get("classifier") match {
         case Some(s) if s matches "(?i)no" => ("", None)
         case Some(s) if s matches "(?i)DT" => 
-          val c = KeelParser.parseHeaderFile(sc, header.get)
-          val arity = for(i <- 0 until c.size if !c(i).isDefinedAt("min")) yield (i, c(i).size)          
+          val arity = header match {
+            case Some(file) => 
+              val c = KeelParser.parseHeaderFile(sc, file)
+              val categInfo = for(i <- 0 until c.size if !c(i).isDefinedAt("min")) yield (i, c(i).size) 
+              categInfo.toMap
+            case None => Map.empty[Int, Int]
+          }     
           (TreeAdapter.algorithmInfo(params), 
-            Some(TreeAdapter.classify(_: RDD[LabeledPoint], params, arity.toMap))) 
+              Some(TreeAdapter.classify(_: RDD[LabeledPoint], params, arity.toMap))) 
         case Some(s) if s matches "(?i)NB" => (NBadapter.algorithmInfo(params), 
             Some(NBadapter.classify(_: RDD[LabeledPoint], params)))
         case Some(s) if s matches "(?i)LR" => (LRadapter.algorithmInfo(params), 
