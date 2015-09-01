@@ -29,7 +29,13 @@ object TreeAdapter extends ClassifierAdapter {
     val impurity = parameters.getOrElse("cls-impurity", "gini")
     val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "5"), 5)
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "32"), 32)
-    val categoricalFeaturesInfo = Map[Int, Int]()
+    val categoricalFeaturesInfo = parameters.get("disc") match {              
+      case Some(s) if s matches "(?i)yes" => 
+        val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15)
+        val categInfo = for(i <- 0 until train.first().features.size) yield (i, bins) 
+        categInfo.toMap
+      case _ =>  Map.empty[Int, Int]
+    }
     val model = DecisionTree.trainClassifier(train, 
         numClasses, categoricalFeaturesInfo, impurity, maxDepth, maxBins)
     new TreeAdapter(model)
@@ -40,8 +46,19 @@ object TreeAdapter extends ClassifierAdapter {
 		val impurity = parameters.getOrElse("cls-impurity", "gini")
 		val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "5"), 5)
 		val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "32"), 32)
+    val categoricalFeaturesInfo = if(nominalInfo.isEmpty) {
+      parameters.get("disc") match {              
+        case Some(s) if s matches "(?i)yes" => 
+          val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15)
+          val categInfo = for(i <- 0 until train.first().features.size) yield (i, bins) 
+          categInfo.toMap
+        case _ =>  Map.empty[Int, Int]
+      }
+    } else {
+      nominalInfo
+    }
 		val model = DecisionTree.trainClassifier(train, 
-        numClasses, nominalInfo, impurity, maxDepth, maxBins)
+        numClasses, categoricalFeaturesInfo, impurity, maxDepth, maxBins)
 		new TreeAdapter(model)
 	}
 

@@ -35,7 +35,13 @@ object RandomForestAdapter extends ClassifierAdapter {
     val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "100"), 100)
     val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "4"), 4)
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "100"), 100)
-    val categoricalFeaturesInfo = Map[Int, Int]()
+    val categoricalFeaturesInfo = parameters.get("disc") match {              
+      case Some(s) if s matches "(?i)yes" => 
+        val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15)
+        val categInfo = for(i <- 0 until train.first().features.size) yield (i, bins) 
+        categInfo.toMap
+      case _ =>  Map.empty[Int, Int]
+    }
     val model = RandomForest.trainClassifier(train, 
         numClasses, categoricalFeaturesInfo, numTrees, featSubSet, 
         impurity, maxDepth, maxBins)
@@ -49,8 +55,19 @@ object RandomForestAdapter extends ClassifierAdapter {
     val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "100"), 100)
     val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "4"), 4)
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "100"), 100)
+    val categoricalFeaturesInfo = if(nominalInfo.isEmpty) {
+      parameters.get("disc") match {              
+        case Some(s) if s matches "(?i)yes" => 
+          val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15)
+          val categInfo = for(i <- 0 until train.first().features.size) yield (i, bins) 
+          categInfo.toMap
+        case _ =>  Map.empty[Int, Int]
+      }
+    } else {
+      nominalInfo
+    }
     val model = RandomForest.trainClassifier(train, 
-        numClasses, nominalInfo, numTrees, featSubSet, 
+        numClasses, categoricalFeaturesInfo, numTrees, featSubSet, 
         impurity, maxDepth, maxBins)
     new RandomForestAdapter(model)
 	}

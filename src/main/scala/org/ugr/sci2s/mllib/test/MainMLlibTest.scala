@@ -62,7 +62,7 @@ object MainMLlibTest {
 		val disc = (train: RDD[LabeledPoint]) => {
 			//val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
       val discretizedFeat: Option[Seq[Int]] = None
-			val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "10"), 10)
+			val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
 
 			println("*** Discretization method: Fayyad discretizer (MDLP)")
 			//println("*** Features to discretize: " + discretizedFeat.get.mkString(","))
@@ -123,48 +123,54 @@ object MainMLlibTest {
 	        case _ => true             
 	    }
 					
-		// Extract data files    
-	    val header = params.get("header-file")
-			val dataFiles = params.get("data-dir") match {
-				case Some(dataDir) => (header, dataDir)
-				case _ =>
-				  val trainFile = params.get("train-file")
-				  val testFile = params.get("test-file")		
-				  (trainFile, testFile) match {
-						case (Some(tr), Some(tst)) => (header, tr, tst)
-						case _ => 
-						  System.err.println("Bad usage. Either train or test file is missing.")
-						  System.exit(-1)
-				  }
-			}
+	// Extract data files    
+    val header = params.get("header-file")
+		val dataFiles = params.get("data-dir") match {
+			case Some(dataDir) => (header, dataDir)
+			case _ =>
+			  val trainFile = params.get("train-file")
+			  val testFile = params.get("test-file")		
+			  (trainFile, testFile) match {
+					case (Some(tr), Some(tst)) => (header, tr, tst)
+					case _ => 
+					  System.err.println("Bad usage. Either train or test file is missing.")
+					  System.exit(-1)
+			  }
+		}
       
-      // Classification
-      val arity = header match {
-            case Some(file) => 
-              val c = KeelParser.parseHeaderFile(sc, file)
-              val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size) 
-              categInfo.toMap
-            case None => Map.empty[Int, Int]
-      }
-      val (algoInfo, classification) = params.get("classifier") match {
-        case Some(s) if s matches "(?i)no" => ("", None)
-        case Some(s) if s matches "(?i)DT" => (TreeAdapter.algorithmInfo(params), 
-              Some(TreeAdapter.classify(_: RDD[LabeledPoint], params, arity.toMap))) 
-        case Some(s) if s matches "(?i)RF" => (RandomForestAdapter.algorithmInfo(params), 
-              Some(RandomForestAdapter.classify(_: RDD[LabeledPoint], params, arity.toMap))) 
-        case Some(s) if s matches "(?i)NB" => (NBadapter.algorithmInfo(params), 
-            Some(NBadapter.classify(_: RDD[LabeledPoint], params)))
-        case Some(s) if s matches "(?i)LR" => (LRadapter.algorithmInfo(params), 
-            Some(LRadapter.classify(_: RDD[LabeledPoint], params)))        
-        case _ => (SVMadapter.algorithmInfo(params), // Default: SVM
-            Some(SVMadapter.classify(_: RDD[LabeledPoint], params)))              
+    // Classification
+    val arity = header match {
+          case Some(file) => params.get("disc") match {              
+              case Some(s) if s matches "(?i)no" => 
+                val c = KeelParser.parseHeaderFile(sc, file)
+                val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size) 
+                categInfo.toMap
+              case _ => Map.empty[Int, Int]
+          }
+          case None => Map.empty[Int, Int]
+    }
+    
+    val (algoInfo, classification) = params.get("classifier") match {
+      case Some(s) if s matches "(?i)no" => ("", None)
+      case Some(s) if s matches "(?i)DT" => 
+        (TreeAdapter.algorithmInfo(params), 
+              Some(TreeAdapter.classify(_: RDD[LabeledPoint], params, arity)))
+      case Some(s) if s matches "(?i)RF" => 
+        (RandomForestAdapter.algorithmInfo(params), 
+            Some(RandomForestAdapter.classify(_: RDD[LabeledPoint], params, arity))) 
+      case Some(s) if s matches "(?i)NB" => (NBadapter.algorithmInfo(params), 
+          Some(NBadapter.classify(_: RDD[LabeledPoint], params)))
+      case Some(s) if s matches "(?i)LR" => (LRadapter.algorithmInfo(params), 
+          Some(LRadapter.classify(_: RDD[LabeledPoint], params)))        
+      case _ => (SVMadapter.algorithmInfo(params), // Default: SVM
+          Some(SVMadapter.classify(_: RDD[LabeledPoint], params)))              
     }
       
-      println("*** Classification info:" + algoInfo)
+    println("*** Classification info:" + algoInfo)
     
 		
 		// Perform the experiment
-		MLExperimentUtils.executeExperiment(sc, discretization, featureSelection, classification,
+	  MLExperimentUtils.executeExperiment(sc, discretization, featureSelection, classification,
 					  (dataFiles, format, dense) , outputDir.get, algoInfo)
 		
 		sc.stop()
