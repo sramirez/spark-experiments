@@ -257,8 +257,9 @@ object MLExperimentUtils {
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException => 
           val ctrain = train.repartition(864).persist(StorageLevel.MEMORY_ONLY)
-          //val nInstances = ctrain.count() // to persist train and not to affect time measurements
-					val initStartTime = System.nanoTime()	
+          val nInstances = ctrain.count() // to persist train and not to affect time measurements
+					
+          val initStartTime = System.nanoTime()	
 					val classificationModel = classify(ctrain)
 					val classificationTime = (System.nanoTime() - initStartTime) / 1e9
 					
