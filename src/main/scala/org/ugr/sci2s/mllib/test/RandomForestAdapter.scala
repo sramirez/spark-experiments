@@ -37,7 +37,7 @@ object RandomForestAdapter extends ClassifierAdapter {
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "100"), 100)
     val categoricalFeaturesInfo = parameters.get("disc") match {              
       case Some(s) if s matches "(?i)yes" => 
-        val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15)
+        val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15) + 2 // discretization starts on 1
         val categInfo = for(i <- 0 until train.first().features.size) yield (i, bins) 
         categInfo.toMap
       case _ =>  Map.empty[Int, Int]
@@ -58,7 +58,7 @@ object RandomForestAdapter extends ClassifierAdapter {
     val categoricalFeaturesInfo = if(nominalInfo.isEmpty) {
       parameters.get("disc") match {              
         case Some(s) if s matches "(?i)yes" => 
-          val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15)
+          val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15) + 2
           val categInfo = for(i <- 0 until train.first().features.size) yield (i, bins) 
           categInfo.toMap
         case _ =>  Map.empty[Int, Int]
