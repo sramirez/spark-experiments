@@ -20,7 +20,7 @@ object TreeAdapter extends ClassifierAdapter {
   		s"Algorithm: Decision Tree (DT)\n" + 
 			s"numClasses: $numClasses\n" +
 			s"impurity: $impurity\n" + 
-			s"$maxBins: $maxBins\n" +
+			s"maxBins: $maxBins\n" +
 			s"maxDepth: $maxDepth\n\n"		
 	}
   

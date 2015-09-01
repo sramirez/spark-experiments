@@ -24,7 +24,7 @@ object RandomForestAdapter extends ClassifierAdapter {
       s"numTrees: $numTrees\n" +
       s"featureSubsetStrategy: $featSubSet\n" +
 			s"impurity: $impurity\n" + 
-      s"$maxBins: $maxBins\n" +
+      s"maxBins: $maxBins\n" +
 			s"maxDepth: $maxDepth\n\n"		
 	}
   
