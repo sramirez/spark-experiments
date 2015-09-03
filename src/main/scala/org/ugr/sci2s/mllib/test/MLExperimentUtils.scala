@@ -128,8 +128,12 @@ object MLExperimentUtils {
 				
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
-					val initStartTime = System.nanoTime()
-					val discAlgorithm = discretize(train)
+					
+          val dtrain = train.persist(StorageLevel.MEMORY_ONLY_SER)
+          val c = dtrain.count()
+          
+          val initStartTime = System.nanoTime()
+					val discAlgorithm = discretize(dtrain)
 					val discTime = (System.nanoTime() - initStartTime) / 1e9 
           
           val thrsRDD = sc.parallelize(discAlgorithm.thresholds.zipWithIndex)
@@ -140,8 +144,8 @@ object MLExperimentUtils {
           thrsRDD.saveAsTextFile(outputDir + "/discThresholds_" + iteration)
           
           // More efficient than by-instance version
-          val discData = discAlgorithm.transform(train.map(_.features))
-            .zip(train.map(_.label))
+          val discData = discAlgorithm.transform(dtrain.map(_.features))
+            .zip(dtrain.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
           val discTestData = discAlgorithm.transform(test.map(_.features))
             .zip(test.map(_.label))
@@ -157,6 +161,8 @@ object MLExperimentUtils {
           
 					val strTime = sc.parallelize(Array(discTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/disc_time_" + iteration)
+          
+          dtrain.unpersist()
 					
 					(discData, discTestData, discTime)
 			}		
@@ -196,10 +202,11 @@ object MLExperimentUtils {
 				(redTrain, redTest, FSTime)
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
-					val initStartTime = System.nanoTime()
-          val fstrain = train.repartition(864).persist(StorageLevel.MEMORY_ONLY_SER)
+					
+          val fstrain = train.persist(StorageLevel.MEMORY_ONLY_SER)
           val c = fstrain.count()
           
+          val initStartTime = System.nanoTime()
 					val featureSelector = fs(fstrain)
 					val FSTime = (System.nanoTime() - initStartTime) / 1e9
           
@@ -256,7 +263,7 @@ object MLExperimentUtils {
 				(traValuesAndPreds, tstValuesAndPreds, classifficationTime)
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException => 
-          val ctrain = train.repartition(864).persist(StorageLevel.MEMORY_ONLY)
+          val ctrain = train.persist(StorageLevel.MEMORY_ONLY)
           val nInstances = ctrain.count() // to persist train and not to affect time measurements
 					
           val initStartTime = System.nanoTime()	
@@ -266,7 +273,7 @@ object MLExperimentUtils {
 					val traValuesAndPreds = computePredictions2(classificationModel, ctrain).cache()
 					val tstValuesAndPreds = computePredictions2(classificationModel, test).cache()
 					
-          val c = tstValuesAndPreds.count()
+          //val c = tstValuesAndPreds.count()
 					// Save prediction results
 					/*val outputTrain = traValuesAndPreds.map(t => t._1.toInt + "\t" + t._2.toInt)   
 					outputTrain.saveAsTextFile(outputDir + "/result_" + iteration + ".tra")
@@ -276,7 +283,7 @@ object MLExperimentUtils {
           val strTime = sc.parallelize(Array(classificationTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/classification_time_" + iteration)
           
-          //ctrain.unpersist()
+          ctrain.unpersist()
 					
 					(traValuesAndPreds, tstValuesAndPreds, classificationTime)
 			}
@@ -291,6 +298,7 @@ object MLExperimentUtils {
 		 * @param inputData File or directory path where the data set files are placed
 		 * @param outputDir HDFS output directory for the experiment
 		 * @param algoInfo Some basis information about the algorithm to be executed
+     * @param npart Number of partitions to re-format the dataset
 		 */		
 		def executeExperiment(
 		    sc: SparkContext,
@@ -299,7 +307,8 @@ object MLExperimentUtils {
 		    classify: Option[(RDD[LabeledPoint]) => ClassificationModelAdapter],
 		    inputData: (Any, String, Boolean), 
 		    outputDir: String, 
-		    algoInfo: String) {
+		    algoInfo: String,
+        npart: Int) {
 
 			def getDataFiles(dirPath: String, k: Int): Array[(String, String)] = {
 				val subDir = dirPath.split("/").last
@@ -360,9 +369,14 @@ object MLExperimentUtils {
 								var initAllTime = System.nanoTime()
                 
 				val (trainFile, testFile) = dataFiles(i)
-				val trainData = readFile(trainFile)
-				val testData = readFile(testFile)
+				val rawtra = readFile(trainFile)
+				val rawtst = readFile(testFile)
 				
+        val nparttr = rawtra.partitions.size; val npartts = rawtst.partitions.size
+        val trainData = if(npart <= nparttr) rawtra.coalesce(npart, false).cache() else rawtra.repartition(npart).cache()
+        //val tstData = if(npart > npartts) rawtst.coalesce(npart, false) else rawtst.repartition(npart)
+        val testData = rawtst
+        
 				// Discretization
 				var trData = trainData; var tstData = testData        
 				var taskTime = 0.0
@@ -389,23 +403,19 @@ object MLExperimentUtils {
 				}
 				times("FSTime") = times("FSTime") :+ taskTime
 				
-				//Classification
-        //val nFeatures = trData.first().features.size
-        //println("Number of features: " + nFeatures)
-        
+				//Classification        
 				classify match { 
 				  case Some(cls) => 
 				    val (traValuesAndPreds, tstValuesAndPreds, classificationTime) = 
 				  		classification(cls, trData, tstData, outputDir, i)
 					taskTime = classificationTime
-					/* Confusion matrix for the test set */
-					//confusionMatrices :+ ConfusionMatrix.apply(tstValuesAndPreds, typeConversion.last)
 					predictions = predictions :+ (traValuesAndPreds, tstValuesAndPreds)
 				  case None => taskTime = 0.0 /* criteria not fulfilled, do not classify */
 				}
 				times("ClsTime") = times("ClsTime") :+ taskTime
 				
-				//trainData.unpersist(); testData.unpersist()
+				trainData.unpersist() 
+        //testData.unpersist()
 				
 				var fullTime = (System.nanoTime() - initAllTime) / 1e9
 				times("FullTime") = times("FullTime") :+ fullTime
@@ -433,42 +443,36 @@ object MLExperimentUtils {
 				info: Map[String, String],
 				timeResults: String) {
          
-	        var output = timeResults
-	        if(!predictions.isEmpty){
-	            // Statistics by fold
-	            output += info.get("algoInfo").get + "Accuracy Results\tTrain\tTest\n"
-	      			val traFoldAcc = predictions.map(_._1).map(computeAccuracy)
-	      			val tstFoldAcc = predictions.map(_._2).map(computeAccuracy)		
-	      			// Print fold results into the global result file
-	      			for (i <- 0 until predictions.size){
-	      				output += s"Fold $i:\t" +
-	      					traFoldAcc(i) + "\t" + tstFoldAcc(i) + "\n"
-	      			} 
-	      			
-	      			// Aggregated statistics
-	      			val (aggAvgAccTr, aggStdAccTr) = calcAggStatistics(traFoldAcc)
-	      			val (aggAvgAccTst, aggStdAccTst) = calcAggStatistics(tstFoldAcc)
-	      			output += s"Avg Acc:\t$aggAvgAccTr\t$aggAvgAccTst\n"
-	      			output += s"Svd acc:\t$aggStdAccTr\t$aggStdAccTst\n\n\n"
-	      					
-	      			// Confusion Matrix
-              // ConfusionMatrix.apply(predictions.map(_._2).reduceLeft(_ ++ _))
-	      			val tsstat = new MulticlassMetrics(predictions.map(_._2).reduceLeft(_ ++ _))			    
-	    		    output += "Test Confusion Matrix\n" + tsstat.confusionMatrix.toString + "\n"
-	    		    //output += aggTstConfMatrix.fValue.foldLeft("\t")((str, t) => str + "\t" + t._1) + "\n"              
-	    		    //output += aggTstConfMatrix.fMeasure.foldLeft("F-Measure:")((str, t) => str + "\t" + t._2) + "\n"
-	    		    //output += aggTstConfMatrix.precision.foldLeft("Precision:")((str, t) => str + "\t" + t._2) + "\n"
-	    		    //output += aggTstConfMatrix.recall.foldLeft("Recall:")((str, t) => str + "\t" + t._2) + "\n"
-              output += "F-Measure:" + tsstat.fMeasure + "\n"
-              output += "Precision:" + tsstat.precision + "\n"
-              output += "Recall:" + tsstat.recall + "\n"
-              val auc = (1 + tsstat.truePositiveRate(1.0) - tsstat.falsePositiveRate(1.0)) / 2
-              output += "AUC (label: 1.0): " + auc + "\n"
-	    		    
-	    		    //val aggTraConfMatrix = ConfusionMatrix.apply(predictions.map(_._1).reduceLeft(_ ++ _))
-              val trstat = new MulticlassMetrics(predictions.map(_._1).reduceLeft(_ ++ _))    
-	    		    output += "Train Confusion Matrix\n" + trstat.confusionMatrix.toString
-	        }
+      var output = timeResults
+      if(!predictions.isEmpty){
+          // Statistics by fold
+          output += info.get("algoInfo").get + "Accuracy Results\tTrain\tTest\n"
+    			val traFoldAcc = predictions.map(_._1).map(computeAccuracy)
+    			val tstFoldAcc = predictions.map(_._2).map(computeAccuracy)		
+    			// Print fold results into the global result file
+    			for (i <- 0 until predictions.size){
+    				output += s"Fold $i:\t" +
+    					traFoldAcc(i) + "\t" + tstFoldAcc(i) + "\n"
+    			} 
+    			
+    			// Aggregated statistics
+    			val (aggAvgAccTr, aggStdAccTr) = calcAggStatistics(traFoldAcc)
+    			val (aggAvgAccTst, aggStdAccTst) = calcAggStatistics(tstFoldAcc)
+    			output += s"Avg Acc:\t$aggAvgAccTr\t$aggAvgAccTst\n"
+    			output += s"Svd acc:\t$aggStdAccTr\t$aggStdAccTst\n\n\n"
+    					
+    			// Confusion Matrix
+          val trastat = new MulticlassMetrics(predictions.map(_._1).reduceLeft(_ ++ _))      
+    			val tststat = new MulticlassMetrics(predictions.map(_._2).reduceLeft(_ ++ _))			    
+  		    output += "Test Confusion Matrix\n" + tststat.confusionMatrix.toString + "\n"
+          output += "Train Confusion Matrix\n" + trastat.confusionMatrix.toString + "\n"
+          output += "F-Measure (tra/tst):" + trastat.fMeasure + " - " + tststat.fMeasure + "\n"
+          output += "Precision (tra/tst):" + trastat.fMeasure + " - " + tststat.precision + "\n"
+          output += "Recall(tra/tst):" + trastat.recall + " - " + tststat.recall + "\n"
+          val traauc = (1 + trastat.truePositiveRate(1.0) - trastat.falsePositiveRate(1.0)) / 2
+          val tstauc = (1 + tststat.truePositiveRate(1.0) - tststat.falsePositiveRate(1.0)) / 2
+          output += "AUC (label: 1.0): " + traauc + " - " + tstauc + "\n"             
+      }
 			println(output)
 			
 			val hdfsOutput = sc.parallelize(Array(output), 1)

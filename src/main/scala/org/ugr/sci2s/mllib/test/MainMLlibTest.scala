@@ -113,17 +113,17 @@ object MainMLlibTest {
 	
 		
 	    
-	    val format = params.get("file-format") match {
-	        case Some(s) if s matches "(?i)LibSVM" => s
-	        case _ => "KEEL"             
-	    }
+    val format = params.get("file-format") match {
+        case Some(s) if s matches "(?i)LibSVM" => s
+        case _ => "KEEL"             
+    }
 	    
-	    val dense = params.get("data-format") match {
-	        case Some(s) if s matches "(?i)sparse" => false
-	        case _ => true             
-	    }
+    val dense = params.get("data-format") match {
+        case Some(s) if s matches "(?i)sparse" => false
+        case _ => true             
+    }
 					
-	// Extract data files    
+	  // Extract data files    
     val header = params.get("header-file")
 		val dataFiles = params.get("data-dir") match {
 			case Some(dataDir) => (header, dataDir)
@@ -135,8 +135,8 @@ object MainMLlibTest {
 					case _ => 
 					  System.err.println("Bad usage. Either train or test file is missing.")
 					  System.exit(-1)
-			  }
-		}
+		    }
+	  }
       
     // Classification
     val arity = header match {
@@ -168,10 +168,13 @@ object MainMLlibTest {
       
     println("*** Classification info:" + algoInfo)
     
+    // Partitions to reformat the dataset
+    val partitions = MLEU.toInt(params.getOrElse("npart", "864"), 864)
+    
 		
 		// Perform the experiment
 	  MLExperimentUtils.executeExperiment(sc, discretization, featureSelection, classification,
-					  (dataFiles, format, dense) , outputDir.get, algoInfo)
+					  (dataFiles, format, dense) , outputDir.get, algoInfo, partitions)
 		
 		sc.stop()
 	}
