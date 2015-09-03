@@ -34,7 +34,7 @@ object MainMLlibTest {
 		val sc = new SparkContext(conf)
 
 		println("Usage: MLlibTest --header-file=\"hdfs://\" (--train-file=\"hdfs://\" --test-file=\"hdfs://\" " 
-		    + "| --data-dir=\"hdfs://\") --output-dir=\"hdfs:\\ --disc=yes [ --disc-nbins=10 --save-disc=yes ] --fs=yes [ --fs-criterion=mrmr "
+		    + "| --data-dir=\"hdfs://\") --output-dir=\"hdfs:\\ --npart=X --disc=yes [ --disc-nbins=10 --save-disc=yes ] --fs=yes [ --fs-criterion=mrmr "
 		    + "--fs-nfeat=100 --fs-npart=864 --save-fs=yes ] --file-format=LibSVM|KEEL --data-format=sparse|dense "
         + "--classifier=no|SVM|NB|LR|DT [ --cls-lambda=1.0 --cls-numIter=1 --cls-stepSize = 1.0"
 		    + "--cls-regParam=1.0 --cls-miniBatchFraction=1.0 ]")

@@ -22,7 +22,7 @@ object KeelParser {
   	  new InstanceSet().parseHeaderFromString(arr, true)
   	  
   	  val conv = new Array[Map[String, Double]](Attributes.getNumAttributes)
-  	  for(i <- 0 until Attributes.getNumAttributes - 1) {
+  	  for(i <- 0 until Attributes.getNumAttributes) {
   		  conv(i) = Map()
   		  if(Attributes.getAttribute(i).getType == Attribute.NOMINAL){
   			  val values = Attributes.getAttribute(i)
@@ -35,7 +35,7 @@ object KeelParser {
           conv(i) = Map("min" -> min) 
         } 
   	  }
-  	  conv(Attributes.getNumAttributes - 1) = Map()      
+  	  //conv(Attributes.getNumAttributes - 1) = Map()      
   	  conv
   	}
   

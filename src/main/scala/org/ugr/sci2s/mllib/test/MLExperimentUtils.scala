@@ -223,7 +223,6 @@ object MLExperimentUtils {
 					// Save the obtained FS scheme in a HDFS file (as a sequence)					
 					val selectedAtts = featureSelector.selectedFeatures
           val output = selectedAtts.mkString("\n")
-					//val output = selectedAtts.foldLeft("")((str, elem) => str + elem._1 + "\t" + elem._2 + "\n")
 					val parFSscheme = sc.parallelize(Array(output), 1)
 					parFSscheme.saveAsTextFile(outputDir + "/fs_scheme_" + iteration)
 					val strTime = sc.parallelize(Array(FSTime.toString), 1)
