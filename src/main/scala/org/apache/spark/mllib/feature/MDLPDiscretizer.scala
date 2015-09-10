@@ -153,8 +153,9 @@ class MDLPDiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val stack = new mutable.Queue[((Float, Float), Option[Float])]
     stack.enqueue(((Float.NegativeInfinity, Float.PositiveInfinity), None))
     var result = Seq.empty[Float]
+    val maxPoints = maxBins + 1
 
-    while(stack.length > 0 && result.size < maxBins){
+    while(stack.length > 0 && result.size < maxPoints){
       val (bounds, lastThresh) = stack.dequeue
       // Filter the candidates between the last limits added to the stack
       var cands = candidates.filter({ case (th, _) => th > bounds._1 && th <= bounds._2 })
@@ -189,8 +190,9 @@ class MDLPDiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     // Insert first in the stack (recursive iteration)
     stack.enqueue(((Float.NegativeInfinity, Float.PositiveInfinity), None))
     var result = Seq.empty[Float]
+    val maxPoints = maxBins + 1
 
-    while(stack.length > 0 && result.size < maxBins){
+    while(stack.length > 0 && result.size < maxPoints){
       val (bounds, lastThresh) = stack.dequeue
       // Filter the candidates between the last limits added to the stack
       val newCandidates = candidates.filter({ case (th, _) => 
