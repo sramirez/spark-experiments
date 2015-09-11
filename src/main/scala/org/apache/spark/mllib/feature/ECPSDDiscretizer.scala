@@ -358,23 +358,23 @@ class ECPSDDiscretizer private (val data: RDD[LabeledPoint]) extends Serializabl
     val featureValues = isDense match {
       case true => 
         data.flatMap({ case LabeledPoint(label, dv: DenseVector) =>
-            for(i <- 0 until dv.values.length) yield ((i, dv(i).toFloat), label)                  
+            for(i <- 0 until dv.values.length) yield ((i, dv(i).toFloat), label.toFloat)                  
         })
       case false =>      
         data.flatMap{ case LabeledPoint(label, sv: SparseVector) =>
-          for(i <- 0 until sv.indices.length) yield ((sv.indices(i), sv.values(i).toFloat), label)
+          for(i <- 0 until sv.indices.length) yield ((sv.indices(i), sv.values(i).toFloat), label.toFloat)
         }
     }
     
     // Group elements by feature and point (get distinct points)
     val bContinuousVars = data.context.broadcast(contVars)
-    val createCombiner = (v: Double) => {
+    val createCombiner = (v: Float) => {
       val c = Array.fill[Long](nLabels)(0L)
       c(bLabels2Int.value(v)) += 1
       c
     }
     
-    val mergeValue = (acc: Array[Long], v: Double) => {
+    val mergeValue = (acc: Array[Long], v: Float) => {
       acc(bLabels2Int.value(v)) += 1
       acc
     }
@@ -468,7 +468,6 @@ class ECPSDDiscretizer private (val data: RDD[LabeledPoint]) extends Serializabl
       
     // Get a single vector for all boundary points and the whole binary chromosome
     val nBoundPoints = boundaryPairs.count().toInt  
-    println(s"Number of boundary points: $nBoundPoints")
     val countByAtt = boundaryPairs.mapValues(_ => 1).reduceByKey(_ + _)//.cache()
     //val featBySize = countByAtt.map(_.swap).sortByKey().collect()
     val featById = countByAtt.sortByKey().collect()
@@ -489,18 +488,27 @@ class ECPSDDiscretizer private (val data: RDD[LabeledPoint]) extends Serializabl
     // Calculate nChrPart
     val nPart = data.partitions.size
     val defChPartSize = nBoundPoints / nPart
-    println(s"Default number of boundary points by partition: $defChPartSize")
+    
     // The largest feature (the last one) should not be splitted in several parts
-    val maxChPartSize = math.max(sortedInfo.last.end - sortedInfo.last.init, defChPartSize).toFloat
+    val maxChPartSize = math.max(sortedInfo(0).end - sortedInfo(0).init + 1, defChPartSize).toFloat
     // Compute the factor of multivariety according to the final size
     val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize / defChPartSize).toInt)
     
     val chPartSize = multiVariateFactor * defChPartSize
     val nChPart = nBoundPoints / chPartSize
+    println(s"Number of boundary points: $nBoundPoints")
+    println(s"Number of partitions: $nPart")
+    println(s"Final factor: $multiVariateFactor")
+    println("Maximum size in a feature: " + (sortedInfo(0).end - sortedInfo(0).init + 1))
+    println(s"Default number of boundary points by partition: $defChPartSize")
     println(s"Final number of chromosome partitions: $nChPart")
     println(s"Final size by chromosome partition: $chPartSize")
     
     val chromChunks = divideChromosome(sortedInfo, nGlobalEval, nChPart)
+    println("first chromChunks: " + chromChunks(0)(0).map(_.id).mkString(","))
+    println("Sum by chunk: " + chromChunks(0).map(ch => ch.map(f => f.end - f.init + 1).sum).mkString(","))
+    println("Sum by chunk: " + chromChunks(0).map(_.size).mkString(","))
+    println("Size of the chunkds: " + chromChunks(0).map(_.size).mkString(","))
     val partitionOrder = Random.shuffle((0 until nPart).toVector)
     
     // Update the full list features with the thresholds calculated
@@ -509,7 +517,7 @@ class ECPSDDiscretizer private (val data: RDD[LabeledPoint]) extends Serializabl
     //thrs.foreach({case (k, vth) => thresholds(k) = vth.toArray})    
     //logInfo("Number of features with thresholds computed: " + thrs.length)
     
-    //new DiscretizerModel(thresholds)
+    new DiscretizerModel(Array.fill(100, 100)(0.0f))
   }
 }
 
