@@ -28,7 +28,7 @@ object MainMLlibTest {
 	  
 		val initStartTime = System.nanoTime()
 		
-		val conf = new SparkConf().setAppName("MLlibTest")
+		val conf = new SparkConf().setAppName("MLlibTest").setMaster("local[*]")
 		conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 		conf.set("spark.kryo.registrator", "org.ugr.sci2s.mllib.test.MLlibRegistrator")
 		val sc = new SparkContext(conf)
@@ -74,13 +74,38 @@ object MainMLlibTest {
 		    discretizer
 		}
 		
+    val saveDisc = params.get("save-disc") match {
+                      case Some(s) if s matches "(?i)yes" => true
+                      case _ => false
+                    }
 		val discretization = params.get("disc") match {
-			case Some(s) if s matches "(?i)yes" => 
-		        params.get("save-disc") match {
-		          case Some(s) if s matches "(?i)yes" => 
-		            (Some(disc), true)
-		          case _ => (Some(disc), false)
-		        }
+			case Some(s) if s matches "(?i)mdlp" => 
+		        val disc = (train: RDD[LabeledPoint]) => {
+              //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+              val discretizedFeat: Option[Seq[Int]] = None
+              val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
+        
+              println("*** Discretization method: Fayyad discretizer (MDLP)")
+              //println("*** Features to discretize: " + discretizedFeat.get.mkString(","))
+              println("*** Number of bins: " + nBins)     
+        
+              val discretizer = MDLPDiscretizer.train(train,
+                  discretizedFeat, // continuous features 
+                  nBins) // max number of values per feature
+              discretizer
+            }
+            (Some(disc), saveDisc)
+      case Some(s) if s matches "(?i)ecpsd" => 
+            val disc = (train: RDD[LabeledPoint]) => {
+              //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+              val discretizedFeat: Option[Seq[Int]] = None              
+              println("*** Discretization method: ECPSD discretizer")
+              
+              val discretizer = ECPSDDiscretizer.train(train,
+                  discretizedFeat) // continuous features
+              discretizer
+            }
+            (Some(disc), saveDisc)
 			case _ => (None, false)
 		}		
 		
@@ -169,7 +194,7 @@ object MainMLlibTest {
     println("*** Classification info:" + algoInfo)
     
     // Partitions to reformat the dataset
-    val partitions = MLEU.toInt(params.getOrElse("npart", "864"), 864)
+    val partitions = MLEU.toInt(params.getOrElse("npart", "100"), 100)
     
 		
 		// Perform the experiment
