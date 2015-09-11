@@ -18,7 +18,6 @@
 package org.apache.spark.mllib.feature
 
 import scala.collection.mutable
-import breeze.linalg.{SparseVector => BSV}
 import org.apache.spark.SparkContext._
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.Logging
@@ -39,7 +38,9 @@ import scala.util.Random
  */
 class ECPSDDiscretizer private (val data: RDD[LabeledPoint]) extends Serializable with Logging {
 
-  private case class Feature(id: Int, init: Long, end: Long)
+  private case class Feature(id: Int, init: Int, end: Int) {
+    def size = end - init + 1
+  }
   private val log2 = { x: Double => math.log(x) / math.log(2) }  
   private def entropy(freqs: Seq[Long], n: Long) = {
     // val n = freqs.reduce(_ + _)
@@ -474,24 +475,24 @@ class ECPSDDiscretizer private (val data: RDD[LabeledPoint]) extends Serializabl
     val featById = countByAtt.sortByKey().collect()
     
     val featInfo = new Array[Feature](featById.length)
-    var iindex = 0L
+    var iindex = 0
     for(i <- 0 until featById.length) {
       val (id, l) = featById(i)
       featInfo(i) = new Feature(id, iindex, iindex + l - 1)
       iindex += l
     }    
     // sorted in descending order
-    val sortedInfo = featInfo.sortBy(v => v.init - v.end)
+    val sortedInfo = featInfo.sortBy(_.size)
     
     val bBoundaryPoints = sc.broadcast(boundaryPairs.values.collect())
-    val bChromosomes = sc.broadcast(Array.fill(nChr, nBoundPoints)(true))
+    val bChromosome = sc.broadcast(Array.fill(nBoundPoints)(true))
     
     // Calculate nChrPart
     val nPart = data.partitions.size
     val defChPartSize = nBoundPoints / nPart
     println(s"Default number of boundary points by partition: $defChPartSize")
     // The largest feature (the last one) should not be splitted in several parts
-    val maxChPartSize = math.max(sortedInfo.last.end - sortedInfo.last.init, defChPartSize).toFloat
+    val maxChPartSize = math.max(sortedInfo.last.size, defChPartSize).toFloat
     // Compute the factor of multivariety according to the final size
     val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize / defChPartSize).toInt)
     
@@ -501,8 +502,46 @@ class ECPSDDiscretizer private (val data: RDD[LabeledPoint]) extends Serializabl
     println(s"Final size by chromosome partition: $chPartSize")
     
     val chromChunks = divideChromosome(sortedInfo, nGlobalEval, nChPart)
-    val partitionOrder = Random.shuffle((0 until nPart).toVector)
+    val nChunks = chromChunks.length
+    val partitionOrder = Random.shuffle((0 until nChunks).toVector)
     
+    // Start the map partition phase
+    val evolvChrom = data.mapPartitionsWithIndex({ (index, it) =>  
+      
+      val chid = partitionOrder(index % nChunks)
+      val chunk = chromChunks(0)(chid)
+      val sumsize = chunk.map(_.size).sum
+      // Create a data matrix for each partition
+      val datapart = it.toArray.map({ lp =>
+        val inputs = lp.features
+        var sample = new Array[Float](chunk.length + 1)
+        (0 until chunk.length).map({i => sample(i) = inputs(chunk(i).id).toFloat})
+        sample(chunk.length) = lp.label.toFloat
+        sample
+      })
+      
+      // Compute the single chromosome and the seq of cut points for each chunk
+      val chr = new Array[Boolean](sumsize)
+      val cutPoints = Array.fill(chunk.length)(Seq.empty[Float])      
+      var ichr = 0
+      (0 until chunk.length).map({ indf =>
+        val feat = chunk(indf)
+        (feat.init to feat.end).map({ ig =>
+          chr(ichr) = bChromosome.value(ig)
+          ichr = ichr + 1
+        })
+        cutPoints(indf) = bBoundaryPoints.value.slice(feat.init, feat.end + 1)
+      })
+      
+      // Apply discretizer here!
+      
+      
+      val res = Array.empty[Boolean]
+      val fitness = 0.0f
+      Array((chid, (res, fitness))).toIterator
+    }).reduceByKey({case ((v1, f1), (v2, f2)) => if(f1 > f2) (v1, f1) else (v2, f2)}) 
+    
+    val result = evolvChrom.collect()
     // Update the full list features with the thresholds calculated
     //val base = Array.empty[Float]
     //val thresholds = Array.fill(nFeatures)(base)   
