@@ -101,7 +101,7 @@ object MainMLlibTest {
               val discretizedFeat: Option[Seq[Int]] = None              
               println("*** Discretization method: ECPSD discretizer")
               
-              val discretizer = ECPSDDiscretizer.train(train,
+              val discretizer = DEMDdiscretizer.train(train,
                   discretizedFeat) // continuous features
               discretizer
             }
