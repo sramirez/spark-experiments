@@ -19,11 +19,14 @@ import java.util.Random;
  * @since JDK1.5
  */
 
-public class ECPSRD {
+public class EMD {
 	
 	private long seed;
-	private float[][] actual_cut_points;
+	private float[][] cut_points;
+	private float[][] original_cut_points;
 	private float[][] dataset;
+	private Chromosome initial_chr;
+	private Chromosome best;
 	
 	private ArrayList <Chromosome> population;
 	
@@ -36,37 +39,33 @@ public class ECPSRD {
 	private int pop_length;
 	private int nClasses;
 	
-	private double threshold;
-	private double r;
-	private double alpha, beta;
-	private double best_fitness;
+	private float threshold;
+	private float r;
+	private float alpha, beta;
+	private float best_fitness;
 
-	private double prob1to0Rec;
-	private double prob1to0Div;  
+	private float prob1to0Rec;
+	private float prob1to0Div;  
 	
-	private double pEvaluationsForReduction; 
-	private double pReduction;
+	private float pEvaluationsForReduction; 
+	private float pReduction;
 
 	private int n_restart_not_improving;
 	private static int PROPER_SIZE_CHROMOSOME = 1000;
-	
-    /**
-     * Default constructor
-     */
-    public ECPSRD () { }
     
     /**
      * Creates a CHC object with its parameters
      * 
      * @param pop	Population of rules we want to select
      */
-    public ECPSRD (long seed, float[][] current_dataset, float [][] pop, int eval, int popLength, 
-    		double restart_per, double alpha_fitness, double beta_fitness, double pr0to1Rec, 
-    		double pr0to1Div, double pEvaluationsForReduction, double pReduction, int nClasses) {
+    public EMD (long seed, float[][] dataset, float [][] cut_points, int eval, int popLength, 
+    		float restart_per, float alpha_fitness, float beta_fitness, float pr0to1Rec, 
+    		float pr0to1Div, float pEvaluationsForReduction, float pReduction, int nClasses, boolean[] initial_chr) {
     	
     	this.seed = seed;
-    	dataset = current_dataset;
-    	actual_cut_points = pop;
+    	this.dataset = dataset;
+    	this.cut_points = cut_points;
+    	this.original_cut_points = cut_points.clone();
     	max_eval = eval;
     	pop_length = popLength;
     	r = restart_per;
@@ -79,14 +78,37 @@ public class ECPSRD {
     	this.nClasses = nClasses;
     	
     	max_cut_points = 0;
-    	for (int i=0; i< pop.length; i++) {
-    		if (pop[i] != null)
-    			max_cut_points += pop[i].length;
+    	for (int i=0; i< cut_points.length; i++) {
+    		if (cut_points[i] != null) {
+    			if(!isAscendingSorted(cut_points[i]))
+    					throw new ExceptionInInitializerError("Cut points must be sorted");
+    			max_cut_points += cut_points[i].length;
+    		}
+    			
     	}
     	n_cut_points = max_cut_points;
     	
     	population = new ArrayList <Chromosome> (pop_length);
-    	best_fitness = 100.0;
+    	best_fitness = 100f;
+    	if(initial_chr == null) {
+    		this.initial_chr = new Chromosome (initial_chr);
+    	} else {
+    		if(initial_chr.length == max_cut_points)
+        		this.initial_chr = new Chromosome (initial_chr);
+        	else 
+        		this.initial_chr = new Chromosome (n_cut_points, true);
+    	}
+    	
+    }
+    
+    public EMD (float[][] current_dataset, float [][] cut_points, int nClasses) {    	
+    	this(964534618L, current_dataset, cut_points, 
+    			1000, 50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, null);
+    }
+    
+    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, int nClasses) {
+    	this(964534618L, current_dataset, cut_points, 
+    			1000, 50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, initial_chr);
     }
     
     /**
@@ -94,7 +116,7 @@ public class ECPSRD {
      * 
      * @return	boolean array with the rules selected for the final population
      */
-    public void runAlgo () {
+    public void runAlgorithm() {
     	ArrayList <Chromosome> C_population;
     	ArrayList <Chromosome> Cr_population;
     	boolean pop_changes;
@@ -102,7 +124,7 @@ public class ECPSRD {
     	n_eval = 0;
     	int n_reduction = 0;
     	int n_restart = 0;
-    	threshold = (double) n_cut_points / 4.0;
+    	threshold = (float) n_cut_points / 4.f;
     	n_restart_not_improving = 0;
     	int next_reduction = 1;
     	boolean reduction = true;
@@ -132,7 +154,7 @@ public class ECPSRD {
     		reduction = (n_cut_points * (1 - pReduction) > PROPER_SIZE_CHROMOSOME) &&
     				(n_eval / (max_eval * pEvaluationsForReduction) > next_reduction);
     		if (reduction) {
-    			// We reduce the population, it is not evaluated
+    			// We reduce the population, and it is not evaluated this time
     			reduction(cut_points_log, ((Chromosome)population.get(0)).getIndividual());    	    	
     			cut_points_log = new int[n_cut_points];
     			next_reduction++;
@@ -141,8 +163,8 @@ public class ECPSRD {
     			// (population do not need be evaluated, best chrom is keeped equal)
     			restartPopulation();
     			//restartPopulation();
-    			threshold = Math.round(r * (1.0 - r) * (double) n_cut_points);
-    	    	best_fitness = 100.0;
+    			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
+    	    	best_fitness = 100.0f;
 
     			//System.out.println("Inicio de Evaluación por reduccion!!!!!");
     			evalPopulation();
@@ -193,8 +215,8 @@ public class ECPSRD {
     		if (threshold < 0) {
     			System.out.println("Restart!!");
     			restartPopulation();
-    			threshold = Math.round(r * (1.0 - r) * (double) n_cut_points);
-    	    	best_fitness = 100.0;
+    			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
+    	    	best_fitness = 100.0f;
     			n_restart_not_improving++;
 
     			//System.out.println("Inicio de Evaluación por threshold!!!!!");
@@ -219,7 +241,40 @@ public class ECPSRD {
     	System.out.println("Number of selected cutpoints/max points: " 
     			+ best.n_cutpoints + "/" + max_cut_points);
     	System.out.println("Error in train: " + best.perc_err);
-    	//return new Result(best.getIndividual(), actual_cut_points);
+    	
+    	this.best = best;    	
+    	//return new Result(best.getIndividual(), cut_points);
+    }
+    
+    public float getBestFitness(){
+    	return this.best.getFitness();
+    }
+    
+    public boolean[] getBestIndividual(){
+    	if(max_cut_points == best.getIndividual().length) 
+    		return best.getIndividual();
+    	
+		boolean[] result = new boolean[max_cut_points];
+		boolean[] bred = best.getIndividual();
+		for(int i = 0, acc = 0, oacc = 0; i<cut_points.length; i++){
+			if(cut_points[i] != null) {
+				for(int j = 0, pind = 0; j<cut_points[i].length;j++) {
+    				if(bred[acc + j]) { // The point's been chosen
+    					float[] oatt = original_cut_points[i];
+						// Search the correspondent index
+    					boolean found = false;
+						while(pind < oatt.length && !found){
+    						if(oatt[pind] == cut_points[i][j]) found = true;
+    						pind++;
+    					}
+						if(found) result[oacc + pind - 1] = true;        					
+    				}
+    			}
+			}
+			acc += cut_points[i].length;
+			oacc += original_cut_points[i].length;
+		}
+		return result;
     }
     
     private void reduction(int[] cut_points_log, boolean[] best_chr){
@@ -228,7 +283,7 @@ public class ECPSRD {
     	List<RankingPoint> newPoints = new ArrayList<RankingPoint>(cut_points_log.length);
 		int reduced_size = (int) ((1 - pReduction) * cut_points_log.length);
     	
-		// Maintain the best chromosome' points and the rest ones are used to form a ranking
+		// Maintain the best chromosome's points and the rest ones are used to form a ranking
     	for(int i = 0; i < cut_points_log.length; i++){
     		RankingPoint point = new RankingPoint(i, cut_points_log[i]);
     		if(best_chr[i])
@@ -271,7 +326,7 @@ public class ECPSRD {
 					List<RankingPoint> lastRanked = candidatePoints.subList(first_pos, last_pos);
 					Random r = new Random(seed);
 					
-					// We remove the last ranked elements until we achive the given size
+					// We remove the last ranked elements until we achieve the size
 					while(lastRanked.size() + first_pos > rest_size)
 						lastRanked.remove(r.nextInt(lastRanked.size()));
 					
@@ -279,7 +334,7 @@ public class ECPSRD {
 					newPoints.addAll(lastRanked);
 				}
 			} else {
-				// All candidate points fit in the new chrom
+				// All candidate points fit in the new chromosome
 				newPoints.addAll(candidatePoints);	
 			}
 			
@@ -293,12 +348,12 @@ public class ECPSRD {
     	// Reduce the actual matrix of cut points using the most selected points' positions
     	int index_points = 0;
     	int index_att = 0;
-    	float[][] new_matrix = new float[actual_cut_points.length][];
-		for(int i = 0; (i < actual_cut_points.length) && (index_points < newPoints.size()); i++) {
-			if(actual_cut_points[i] != null) {
+    	float[][] new_matrix = new float[cut_points.length][];
+		for(int i = 0; (i < cut_points.length) && (index_points < newPoints.size()); i++) {
+			if(cut_points[i] != null) {
 				List<Float> lp = new ArrayList<Float>();
-				while(newPoints.get(index_points).id < index_att + actual_cut_points[i].length){
-					lp.add(actual_cut_points[i][newPoints.get(index_points).id - index_att]);
+				while(newPoints.get(index_points).id < index_att + cut_points[i].length){
+					lp.add(cut_points[i][newPoints.get(index_points).id - index_att]);
 					if(++index_points >= newPoints.size()){ break; }
 				}
 
@@ -307,10 +362,10 @@ public class ECPSRD {
 					new_matrix[i][j] = lp.get(j);
 				}
 
-				index_att += actual_cut_points[i].length;
+				index_att += cut_points[i].length;
 			}				
 		}
-		actual_cut_points = new_matrix;
+		cut_points = new_matrix;
 		
 		// Reduce the size of the chromosomes according to the number of points
 		n_cut_points = newPoints.size();
@@ -332,20 +387,16 @@ public class ECPSRD {
      * Creates several population individuals randomly. The first individual has all its values set to true
      */
     private void initPopulation () {
-    	Chromosome current_chromosome = new Chromosome (n_cut_points, true);
-    	population.add(current_chromosome);
-    	
-    	for (int i=1; i<pop_length; i++) {
-    		current_chromosome = new Chromosome (n_cut_points);
-    		population.add(current_chromosome);
-    	}
+    	population.add(initial_chr);    	
+    	for (int i=1; i<pop_length; i++)
+    		population.add(new Chromosome(n_cut_points));
     }
     
     /**
      * Evaluates the population individuals. If a chromosome was previously evaluated we do not evaluate it again
      */
     private void evalPopulation () {
-    	double ind_fitness;
+    	int nInputs = dataset[0].length - 1;
     	
     	/* WEKA data set initialization
     	 * Second and Third type of evaluator in precision: WEKA classifier
@@ -355,15 +406,15 @@ public class ECPSRD {
 	    //weka.core.Instance instances[] = new weka.core.Instance[discretized_data.length];
 	    
 	    /*Attribute adaptation to WEKA format*/
-	    for (int i=0; i< dataset[0].length - 1; i++) {
+	    for (int i=0; i< nInputs; i++) {
 	    	List<String> att_values = new ArrayList<String>();
-    		if(actual_cut_points[i] != null) {
-	    		for (int j=0; j < actual_cut_points[i].length + 1; j++)
+    		if(cut_points[i] != null) {
+	    		for (int j=0; j < cut_points[i].length + 1; j++)
 		    		att_values.add(new String(Integer.toString(j)));
     		} else {
     			//for (int j = (int) ranges[i][0]; j <= ranges[i][1]; j++) 
     				//att_values.add(new String(Integer.toString(j)));
-    			att_values.add("0");
+    			att_values.add("0"); // An empty list of points implies a single discrete value
     		}
     		weka.core.Attribute att = 
 	    			new weka.core.Attribute("At" + i, att_values, i);
@@ -374,7 +425,7 @@ public class ECPSRD {
 	    for (int i=0; i<nClasses; i++) {
 	    	att_values.add(new String(Integer.toString(i)));
 	    }
-	    attributes.add(new weka.core.Attribute("Class", att_values, dataset[0].length - 1));
+	    attributes.add(new weka.core.Attribute("Class", att_values, nInputs));
 
     	/*WEKA data set construction*/
 	    weka.core.Instances baseTrain = new weka.core.Instances(
@@ -384,12 +435,12 @@ public class ECPSRD {
         for (int i = 0; i < pop_length; i++) {
             if (population.get(i).not_eval()) {
                 //program.execute(args[0]);
-            	population.get(i).evaluate(baseTrain, dataset, actual_cut_points, max_cut_points, alpha, beta);
-            	//population.get(i).evaluate(dataset, actual_cut_points, max_cut_points, alpha, beta);
+            	population.get(i).evaluate(baseTrain, dataset, cut_points, max_cut_points, alpha, beta);
+            	//population.get(i).evaluate(dataset, cut_points, max_cut_points, alpha, beta);
             	n_eval++;
             }
         	
-        	ind_fitness = population.get(i).getFitness();
+        	float ind_fitness = population.get(i).getFitness();
         	if (ind_fitness < best_fitness) {
         		best_fitness = ind_fitness;            		
         	}
@@ -471,6 +522,7 @@ public class ECPSRD {
      */
     private void evaluate (ArrayList <Chromosome> pop) {
     	
+    	int nInputs = dataset[0].length - 1;
     	/* WEKA data set initialization
     	 * Second and Third type of evaluator in precision: WEKA classifier
     	 * */    	
@@ -479,10 +531,10 @@ public class ECPSRD {
 	    //weka.core.Instance instances[] = new weka.core.Instance[discretized_data.length];
 	    
 	    /*Attribute adaptation to WEKA format*/
-	    for (int i=0; i< dataset[0].length - 1; i++) {
+	    for (int i=0; i< nInputs; i++) {
 	    	List<String> att_values = new ArrayList<String>();
-    		if(actual_cut_points[i] != null) {
-	    		for (int j=0; j < actual_cut_points[i].length + 1; j++)
+    		if(cut_points[i] != null) {
+	    		for (int j=0; j < cut_points[i].length + 1; j++)
 		    		att_values.add(new String(Integer.toString(j)));
     		} else {
     			//for (int j = (int) ranges[i][0]; j <= ranges[i][1]; j++) 
@@ -498,7 +550,7 @@ public class ECPSRD {
 	    for (int i=0; i<nClasses; i++) {
 	    	att_values.add(new String(Integer.toString(i)));
 	    }
-	    attributes.add(new weka.core.Attribute("Class", att_values, dataset[0].length - 1));
+	    attributes.add(new weka.core.Attribute("Class", att_values, nInputs));
 
     	/*WEKA data set construction*/
 	    weka.core.Instances baseTrain = new weka.core.Instances(
@@ -507,7 +559,7 @@ public class ECPSRD {
     	
     	for (int i = 0; i < pop.size(); i++) {
             if (pop.get(i).not_eval()) {
-            	pop.get(i).evaluate(baseTrain, dataset, actual_cut_points, max_cut_points, alpha, beta);
+            	pop.get(i).evaluate(baseTrain, dataset, cut_points, max_cut_points, alpha, beta);
             	n_eval++;
             }
         }
@@ -520,7 +572,7 @@ public class ECPSRD {
      * @return true, if any element of the current population is changed with other element of the new population; false, otherwise
      */
     private boolean selectNewPopulation (ArrayList <Chromosome> pop) {
-    	double worst_old_population, best_new_population;
+    	float worst_old_population, best_new_population;
     	
     	// First, we sort the old and the new population
     	Collections.sort(population);
@@ -531,7 +583,7 @@ public class ECPSRD {
     		best_new_population = ((Chromosome)pop.get(0)).getFitness();
     	}
     	else {
-    		best_new_population = 0.0;
+    		best_new_population = 0.f;
     	}	
     	
     	//if ((worst_old_population >= best_new_population) || (pop.size() <= 0)) {
@@ -543,7 +595,6 @@ public class ECPSRD {
     		int i = 0;
     		int i_pop = 0;
     		boolean copy_old_population = true;
-    		double current_fitness;
     		boolean small_new_pop = false;
     		
     		new_pop = new ArrayList <Chromosome> (pop_length);
@@ -551,7 +602,7 @@ public class ECPSRD {
     		// Copy the members of the old population better than the members of the new population
     		do {
     			current_chromosome = (Chromosome)population.get(i);
-    			current_fitness = current_chromosome.getFitness();
+    			float current_fitness = current_chromosome.getFitness();
     			
     			//if (current_fitness < best_new_population) {
     			if (current_fitness >= best_new_population) {
@@ -580,7 +631,7 @@ public class ECPSRD {
     			Collections.sort(new_pop);
     		}
     		
-    		current_fitness = ((Chromosome)new_pop.get(0)).getFitness();
+    		float current_fitness = ((Chromosome)new_pop.get(0)).getFitness();
     		
     		if (best_fitness > current_fitness) {
     			best_fitness = current_fitness;
@@ -614,6 +665,14 @@ public class ECPSRD {
     	}
     	
     	population = new_pop;
+    }
+    
+    private boolean isAscendingSorted(float[] v) {
+        boolean sorted = true;        
+        for (int i = 1; i < v.length; i++) {
+            if (v[i-1] > v[i]) return false;
+        }
+        return sorted;
     }
     
     class ComparePointsByID implements Comparator<RankingPoint> {

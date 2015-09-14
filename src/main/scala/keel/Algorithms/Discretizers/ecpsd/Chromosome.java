@@ -24,10 +24,10 @@ import java.util.Random;
 public class Chromosome implements Comparable {
 	private boolean [] individual; // Boolean array selecting cutpoints from a list of cutpoints
 	private boolean n_e; // Indicates whether this chromosome has been evaluated or not
-	double fitness;// Fitness associated to the cut points represented by the boolean array
+	float fitness;// Fitness associated to the cut points represented by the boolean array
 	int n_cutpoints; // Fitness associated to the dataset, it indicates the number of cutpoints selected
 	int inconsistencies;
-	double perc_err;
+	float perc_err;
 	
 	/**
      * Default constructor
@@ -58,13 +58,12 @@ public class Chromosome implements Comparable {
      * @param size	Size of the new chromosome 
      */
     public Chromosome (int size) {
-    	double u;
     	
     	individual = new boolean [size];
     	
     	Random rnd = new Random();
     	for (int i=0; i<size; i++) {
-    		u = rnd.nextFloat();
+    		float u = rnd.nextFloat();
 			if (u < 0.5) {
 				individual[i] = false;
 			}
@@ -74,7 +73,7 @@ public class Chromosome implements Comparable {
     	}
     	
     	n_e = true;
-    	fitness = 0.0;
+    	fitness = .0f;
     	n_cutpoints = size;
     }
 
@@ -92,7 +91,7 @@ public class Chromosome implements Comparable {
     	}
     	
     	n_e = true;
-    	fitness = 0.0;
+    	fitness = .0f;
     	n_cutpoints = size;
     }
     
@@ -109,7 +108,7 @@ public class Chromosome implements Comparable {
     	}
     	
     	n_e = true;
-    	fitness = 0.0;
+    	fitness = .0f;
     	n_cutpoints = data.length;
     }
     
@@ -119,7 +118,7 @@ public class Chromosome implements Comparable {
      * @param orig	Best chromosome of the population that is going to be used to create another chromosome
      * @param r	R factor of diverge
      */
-    public Chromosome (Chromosome orig, double r) {
+    public Chromosome (Chromosome orig, float r) {
     	individual = new boolean [orig.individual.length];
     	
     	Random rnd = new Random();
@@ -133,7 +132,7 @@ public class Chromosome implements Comparable {
     	}
     	
     	n_e = true;
-    	fitness = 0.0;
+    	fitness = .0f;
     	n_cutpoints = orig.n_cutpoints;
     }
 
@@ -143,7 +142,7 @@ public class Chromosome implements Comparable {
      * @param orig	Best chromosome of the population that is going to be used to create another chromosome
      * @param r	R factor of diverge
      */
-    public Chromosome (Chromosome orig, double r, double prob0to1Div) {
+    public Chromosome (Chromosome orig, float r, float prob0to1Div) {
     	individual = new boolean [orig.individual.length];
     	
     	Random rnd = new Random();
@@ -161,7 +160,7 @@ public class Chromosome implements Comparable {
     	}
     	
     	n_e = true;
-    	fitness = 0.0;
+    	fitness = .0f;
     	n_cutpoints = individual.length;
     }
     
@@ -184,7 +183,7 @@ public class Chromosome implements Comparable {
      * @param beta	Coefficient for the number of inconsistencies importance
      */
     public void evaluate (weka.core.Instances base, float[][] dataset, float [][] cut_points, 
-    		int initial_cut_points, double alpha, double beta) {
+    		int initial_cut_points, float alpha, float beta) {
     	
     	int n_selected_cut_points = 0;
     	weka.core.Instances datatrain = new weka.core.Instances(base);
@@ -201,7 +200,7 @@ public class Chromosome implements Comparable {
     	for (int i=0; i < dataset.length; i++) {
     		float [] sample = dataset[i];
     		double[] tmp = new double[sample.length];    		
-    		for (j=0; j < sample.length; j++) 
+    		for (j=0; j < nInputs; j++) 
     			tmp[j] = discretize (sample[j], cut_points[j]);
     		
     		tmp[j] = sample[j]; // the class
@@ -245,7 +244,7 @@ public class Chromosome implements Comparable {
     	 * Third type of evaluator in precision: Naive Bayes classifier
     	 * nber is the error counter
     	 * */
-    	double nber = 0;
+    	int nber = 0;
 	    NaiveBayes baseBayes = new NaiveBayes();		
 	    
 	    try {
@@ -290,7 +289,7 @@ public class Chromosome implements Comparable {
      * 
      * @return	the fitness associated to this CHC_Chromosome
      */
-    public double getFitness() {
+    public float getFitness() {
     	return fitness;
     }
     
@@ -373,8 +372,8 @@ public class Chromosome implements Comparable {
     	
     	descendant1.n_e = true;
     	descendant2.n_e = true;
-    	descendant1.fitness = 0.0;
-    	descendant2.fitness = 0.0;
+    	descendant1.fitness = .0f;
+    	descendant2.fitness = .0f;
     	descendant1.n_cutpoints = individual.length;
     	descendant2.n_cutpoints = individual.length;
     	
@@ -392,7 +391,7 @@ public class Chromosome implements Comparable {
      * @param ch_b	Other chromosome that we want to use to create another chromosome
      * @return	a new pair of CHC_chromosome from this chromosome and the given chromosome
      */
-    public ArrayList <Chromosome> createDescendants (Chromosome ch_b, double prob0to1Rec) {
+    public ArrayList <Chromosome> createDescendants (Chromosome ch_b, float prob0to1Rec) {
     	int i;
     	Chromosome descendant1 = new Chromosome();
     	Chromosome descendant2 = new Chromosome();
@@ -426,8 +425,8 @@ public class Chromosome implements Comparable {
     	
     	descendant1.n_e = true;
     	descendant2.n_e = true;
-    	descendant1.fitness = 0.0;
-    	descendant2.fitness = 0.0;
+    	descendant1.fitness = .0f;
+    	descendant2.fitness = .0f;
     	descendant1.n_cutpoints = individual.length;
     	descendant2.n_cutpoints = individual.length;
     	
@@ -447,17 +446,6 @@ public class Chromosome implements Comparable {
     	return individual;
     }
     
-    
-    /**
-     * Obtains the discretized value of a real data for an attribute considering the
-     * cut points vector given and the individual information 
-     * 
-     * @param attribute	Position of the attribute that is associated to the given value
-     * @param value	Real value we want to discretize according to the considered cutpoints
-     * @param cut_points	Proposed cut points that are selected by the CHC chromosome
-     * @param dataset	Training dataset used in this algorithm
-     * @return	the integer value associated to the discretization done
-     */
 /*	private int discretize (int attribute, float value, float [][] cut_points, int nInputs) {
 		int index_att, index_values, j;
 		
@@ -487,29 +475,38 @@ public class Chromosome implements Comparable {
 		return index_values++;
 	}*/
 	
+    /**
+     * Obtains the discretized value of a real data considering the
+     * cut points vector given and the individual information (uses binary search).
+     * 
+     * 
+     * @param value	Real value we want to discretize according to the considered cutpoints (must be sorted in ascending order)
+     * @param cp Cut points used to discretize (selected by the chromosome)
+     * @return	a discrete integer value
+     */
     private int discretize(float value, float[] cp) {
+    	if(cp == null) return 0; // No boundary points
     	int ipoint = Arrays.binarySearch(cp, value);
     	if(ipoint != -1)
     		return ipoint;
 		else
-			return 0;
+			return 0; // An empty list of points implies a single discrete value
     }
 
 	
-	  public String toString() {
-		  String output = "";
+    public String toString() {
+    	String output = "";
 		  
-		  for (int i=0; i<individual.length; i++) {
-			  if (individual[i]) {
-				  output = output + "1 ";
-			  }
-			  else {
-				  output = output + "0 ";
-			  }
-		  }
+    	for (int i=0; i<individual.length; i++) {
+    		if (individual[i]) {
+    			output = output + "1 ";
+    		} else {
+			  	output = output + "0 ";
+    		}
+    	}
 		  
-		  return (output);
-	  }
+    	return (output);
+    }
     
     /**
      * Compares this object with the specified object for order, according to the fitness measure 
