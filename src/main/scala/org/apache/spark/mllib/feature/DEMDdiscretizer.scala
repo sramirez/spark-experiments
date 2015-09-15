@@ -26,6 +26,7 @@ import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.linalg._
 import scala.util.Random
 import keel.Algorithms.Discretizers.ecpsd._
+import scala.collection.mutable.ArrayBuffer
 
 /**
  * Entropy minimization discretizer based on Minimum Description Length Principle (MDLP)
@@ -41,21 +42,10 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
 
   private case class Feature(id: Int, init: Int, end: Int) {
     def size = end - init + 1
-  }
-  private val log2 = { x: Double => math.log(x) / math.log(2) }  
-  private def entropy(freqs: Seq[Long], n: Long) = {
-    // val n = freqs.reduce(_ + _)
-    freqs.aggregate(0.0)({ case (h, q) =>
-      h + (if (q == 0) 0  else (q.toDouble / n) * (math.log(q.toDouble / n) / math.log(2)))
-    }, { case (h1, h2) => h1 + h2 }) * -1
-  }
-  
+  }  
   private val isBoundary = (f1: Array[Long], f2: Array[Long]) => {
     (f1, f2).zipped.map(_ + _).filter(_ != 0).size > 1
   }
-  private val maxLimitBins = Byte.MaxValue - Byte.MinValue + 1
-  private val labels2Int = data.map(_.label).distinct.collect.zipWithIndex.toMap
-  private val nLabels = labels2Int.size
   
   /**
    * Get information about the attributes before performing discretization.
@@ -89,7 +79,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
    */
   private def initialThresholds(
       points: RDD[((Int, Float), Array[Long])], 
-      firstElements: Array[Option[(Int, Float)]]) = {
+      firstElements: Array[Option[(Int, Float)]],
+      nLabels: Int) = {
     
     val numPartitions = points.partitions.length
     val bcFirsts = points.context.broadcast(firstElements)      
@@ -133,224 +124,12 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     })
   }
   
-  /**
-   * Evaluate boundary points and select the most relevant. This version is used when 
-   * the number of candidates exceeds the maximum size per partition (distributed version).
-   * 
-   * @param candidates RDD of candidates points (point, class histogram).
-   * @param maxBins Maximum number of points to select
-   * @param elementsByPart Maximum number of elements to evaluate in each partition.
-   * @return Sequence of threshold values.
-   * 
-   */
-  private def getThresholds(
-      candidates: RDD[(Float, Array[Long])],
-      maxBins: Int, 
-      elementsByPart: Int) = {
-
-    // Get the number of partitions according to the maximum size established by partition
-    val partitions = { x: Long => math.ceil(x.toFloat / elementsByPart).toInt }    
-    
-    // Insert the extreme values in the stack (recursive iteration)
-    val stack = new mutable.Queue[((Float, Float), Option[Float])]
-    stack.enqueue(((Float.NegativeInfinity, Float.PositiveInfinity), None))
-    var result = Seq.empty[Float]
-    val maxPoints = maxBins + 1
-
-    while(stack.length > 0 && result.size < maxPoints){
-      val (bounds, lastThresh) = stack.dequeue
-      // Filter the candidates between the last limits added to the stack
-      var cands = candidates.filter({ case (th, _) => th > bounds._1 && th <= bounds._2 })
-      val nCands = cands.count
-      if (nCands > 0) {
-        cands = cands.coalesce(partitions(nCands))
-        // Selects one threshold among the candidates and returns two partitions to recurse
-        evalThresholds(cands, lastThresh) match {
-          case Some(th) =>
-            result = th +: result
-            stack.enqueue(((bounds._1, th), Some(th)))
-            stack.enqueue(((th, bounds._2), Some(th)))
-          case None => /* criteria not fulfilled, finish! */
-        }
-      }
-    }
-    (Float.PositiveInfinity +: result).sorted
-  }
-  
-  /**
-   * Evaluates boundary points and selects the most relevant candidates (sequential version).
-   * Here, the evaluation is bounded by partition as the number of points is small enough.
-   * 
-   * @param candidates RDD of candidates points (point, class histogram).
-   * @param maxBins Maximum number of points to select.
-   * @return Sequence of threshold values.
-   * 
-   */
-  private def getThresholds(candidates: Array[(Float, Array[Long])], maxBins: Int) = {
-
-    val stack = new mutable.Queue[((Float, Float), Option[Float])]
-    // Insert first in the stack (recursive iteration)
-    stack.enqueue(((Float.NegativeInfinity, Float.PositiveInfinity), None))
-    var result = Seq.empty[Float]
-    val maxPoints = maxBins + 1
-
-    while(stack.length > 0 && result.size < maxPoints){
-      val (bounds, lastThresh) = stack.dequeue
-      // Filter the candidates between the last limits added to the stack
-      val newCandidates = candidates.filter({ case (th, _) => 
-          th > bounds._1 && th <= bounds._2 
-        })      
-      if (newCandidates.size > 0) {
-        evalThresholds(newCandidates, lastThresh, nLabels) match {
-          case Some(th) =>
-            result = th +: result
-            stack.enqueue(((bounds._1, th), Some(th)))
-            stack.enqueue(((th, bounds._2), Some(th)))
-          case None => /* criteria not fulfilled, finish */
-        }
-      }
-    }
-    (Float.PositiveInfinity +: result).sorted
-  }
-
-  /**
-   * Compute entropy minimization for candidate points in a range,
-   * and select the best one according to the MDLP criterion (RDD version).
-   * 
-   * @param candidates RDD of candidate points (point, class histogram).
-   * @param lastSelected Last selected threshold.
-   * @return The minimum-entropy candidate.
-   * 
-   */
-  private def evalThresholds(
-      candidates: RDD[(Float, Array[Long])],
-      lastSelected : Option[Float]) = {
-
-    val numPartitions = candidates.partitions.size
-    val sc = candidates.sparkContext
-
-    // Compute the accumulated frequencies by partition
-    val totalsByPart = sc.runJob(candidates, { case it =>
-      val accum = Array.fill(nLabels)(0L)
-      for ((_, freqs) <- it) {for (i <- 0 until nLabels) accum(i) += freqs(i)}
-      accum
-    }: (Iterator[(Float, Array[Long])]) => Array[Long])
-    
-    // Compute the total frequency for all partitions
-    var totals = Array.fill(nLabels)(0L)
-    for (t <- totalsByPart) totals = (totals, t).zipped.map(_ + _)
-    val bcTotalsByPart = sc.broadcast(totalsByPart)
-    val bcTotals = sc.broadcast(totals)
-
-    val result = candidates.mapPartitionsWithIndex({ (slice, it) =>
-      // Accumulate frequencies from the left to the current partition
-      var leftTotal = Array.fill(nLabels)(0L)
-      for (i <- 0 until slice) leftTotal = (leftTotal, bcTotalsByPart.value(i)).zipped.map(_ + _)
-      var entropyFreqs = Seq.empty[(Float, Array[Long], Array[Long], Array[Long])]
-      // ... and from the current partition to the rightmost partition
-      for ((cand, freqs) <- it) {
-        leftTotal = (leftTotal, freqs).zipped.map(_ + _)
-        val rightTotal = (bcTotals.value, leftTotal).zipped.map(_ - _)
-        entropyFreqs = (cand, freqs, leftTotal.clone, rightTotal) +: entropyFreqs
-      }        
-      entropyFreqs.iterator
-    })
-
-    // calculate h(S)
-    // s: number of elements
-    // k: number of distinct classes
-    // hs: entropy        
-    val s  = totals.sum
-    val hs = entropy(totals.toSeq, s)
-    val k  = totals.filter(_ != 0).size
-
-    // select the best threshold according to MDLP
-    val finalCandidates = result.flatMap({
-      case (cand, _, leftFreqs, rightFreqs) =>
-        val k1 = leftFreqs.filter(_ != 0).size; val s1 = leftFreqs.sum
-        val hs1 = entropy(leftFreqs, s1)
-        val k2 = rightFreqs.filter(_ != 0).size; val s2 = rightFreqs.sum
-        val hs2 = entropy(rightFreqs, s2)
-        val weightedHs = (s1 * hs1 + s2 * hs2) / s
-        val gain = hs - weightedHs
-        val delta = log2(math.pow(3, k) - 2) - (k * hs - k1 * hs1 - k2 * hs2)
-        var criterion = (gain - (log2(s - 1) + delta) / s) > -1e-5
-        lastSelected match {
-          case None =>
-          case Some(last) => criterion = criterion && (cand != last)
-        }
-        if (criterion) Seq((weightedHs, cand)) else Seq.empty[(Double, Float)]
-    })
-    // Select among the list of accepted candidate, that with the minimum weightedHs
-    if (finalCandidates.count > 0) Some(finalCandidates.min._2) else None
-  }
-  
-  /**
-   * Compute entropy minimization for candidate points in a range,
-   * and select the best one according to MDLP criterion (sequential version).
-   * 
-   * @param candidates Array of candidate points (point, class histogram).
-   * @param lastSelected last selected threshold.
-   * @param nLabels Number of classes.
-   * @return The minimum-entropy cut point.
-   * 
-   */
-  private def evalThresholds(
-      candidates: Array[(Float, Array[Long])],
-      lastSelected : Option[Float],
-      nLabels: Int): Option[Float] = {
-    
-    // Calculate the total frequencies by label
-    val totals = candidates.map(_._2).reduce((freq1, freq2) => (freq1, freq2).zipped.map(_ + _))
-    
-    // Compute the accumulated frequencies (both left and right) by label
-    var leftAccum = Array.fill(nLabels)(0L)
-    var entropyFreqs = Seq.empty[(Float, Array[Long], Array[Long], Array[Long])]
-    for(i <- 0 until candidates.size) {
-      val (cand, freq) = candidates(i)
-      leftAccum = (leftAccum, freq).zipped.map(_ + _)
-      val rightTotal = (totals, leftAccum).zipped.map(_ - _)
-      entropyFreqs = (cand, freq, leftAccum.clone, rightTotal) +: entropyFreqs
-    }
-
-    // calculate h(S)
-    // s: number of elements
-    // k: number of distinct classes
-    // hs: entropy
-    val s = totals.sum
-    val hs = entropy(totals.toSeq, s)
-    val k = totals.filter(_ != 0).size
-
-    // select best threshold according to the criteria
-    val finalCandidates = entropyFreqs.flatMap({
-      case (cand, _, leftFreqs, rightFreqs) =>
-        val k1 = leftFreqs.filter(_ != 0).size
-        val s1 = if (k1 > 0) leftFreqs.sum else 0
-        val hs1 = entropy(leftFreqs, s1)
-        val k2 = rightFreqs.filter(_ != 0).size
-        val s2 = if (k2 > 0) rightFreqs.sum else 0
-        val hs2 = entropy(rightFreqs, s2)
-        val weightedHs = (s1 * hs1 + s2 * hs2) / s
-        val gain = hs - weightedHs
-        val delta = log2(math.pow(3, k) - 2) - (k * hs - k1 * hs1 - k2 * hs2)
-        var criterion = (gain - (log2(s - 1) + delta) / s) > -1e-5
-        
-        lastSelected match {
-            case None =>
-            case Some(last) => criterion = criterion && (cand != last)
-        }
-
-        if (criterion) Seq((weightedHs, cand)) else Seq.empty[(Double, Float)]
-    })
-    // Select among the list of accepted candidate, that with the minimum weightedHs
-    if (finalCandidates.size > 0) Some(finalCandidates.min._2) else None
-  }
-  
   private def computeBoundaryPoints(
       nFeatures: Int, 
       contVars: Array[Int], 
       labels2Int: Map[Double, Int],
       classDist: Map[Int, Long], 
+      nLabels: Int,
       isDense: Boolean) = {
     
     val bClassDist = data.context.broadcast(classDist)
@@ -408,7 +187,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val barr = data.context.broadcast(arr)
     
     // Get only boundary points from the whole set of distinct values
-    val boundaryPairs = initialThresholds(sortedValues, firstElements)
+    val boundaryPairs = initialThresholds(sortedValues, firstElements, nLabels)
       .keys
       .filter({case (a, _) => barr.value(a)})
     boundaryPairs
@@ -437,8 +216,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
    * 
    */
   def runAll(
-      contFeat: Option[Seq[Int]], 
-      elementsByPart: Int,
+      contFeat: Option[Seq[Int]],
       nChr: Int,
       userFactor: Int,
       nLocalEval: Int,
@@ -449,8 +227,10 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         + " parent RDDs are also uncached.")
     }
 
-    // Basic info. about the dataset
-    val sc = data.context
+    // Obtain basic information about the dataset
+    val sc = data.context    
+    val labels2Int = data.map(_.label).distinct.collect.zipWithIndex.toMap
+    val nLabels = labels2Int.size
     val classDistrib = data.map(d => labels2Int(d.label)).countByValue()
     val (isDense, nFeatures) = data.first.features match {
       case v: DenseVector => 
@@ -466,12 +246,11 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       "No continous attribute in the dataset")
     
     val boundaryPairs = computeBoundaryPoints(nFeatures, contVars, labels2Int, 
-        classDistrib.toMap, isDense).cache
+        classDistrib.toMap, nLabels, isDense).cache()
       
-    // Get a single vector for all boundary points and the whole binary chromosome
+    // Order the boundary points by size and by id to yield the vector of features
     val nBoundPoints = boundaryPairs.count().toInt  
     val countByAtt = boundaryPairs.mapValues(_ => 1).reduceByKey(_ + _)//.cache()
-    //val featBySize = countByAtt.map(_.swap).sortByKey().collect()
     val featById = countByAtt.sortByKey().collect()
     
     val featInfo = new Array[Feature](featById.length)
@@ -481,86 +260,112 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       featInfo(i) = new Feature(id, iindex, iindex + l - 1)
       iindex += l
     }    
-    // sorted in descending order
-    val sortedInfo = featInfo.sortBy(_.size)
+    val featInfoBySize = featInfo.sortBy(_.size) // sorted in descending order   
     
-    val bBoundaryPoints = sc.broadcast(boundaryPairs.values.collect())
-    val bChromosome = sc.broadcast(Array.fill(nBoundPoints)(true))
-    
-    // Calculate nChrPart
+    /** Get in the driver the vector of boundary points and the big chromosome **/
+    val boundaryPoints = boundaryPairs.values.collect()
+    val bBoundaryPoints = sc.broadcast(boundaryPoints)
+    val bigChromosome = Array.fill(nBoundPoints)(true)
+    var bBigChromosome = sc.broadcast(bigChromosome)    
+
+    /** Compute numerical variables to control the number of chunks and chromosome partitions **/
     val nPart = data.partitions.size
-    val defChPartSize = nBoundPoints / nPart
-    
+    val defChPartSize = nBoundPoints / nPart    
     // The largest feature (the last one) should not be splitted in several parts
-    val maxChPartSize = math.max(sortedInfo.last.size, defChPartSize).toFloat
+    val maxChPartSize = math.max(featInfoBySize.last.size, defChPartSize).toFloat
     // Compute the factor of multivariety according to the final size
     val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize / defChPartSize).toInt)
-    
     val chPartSize = multiVariateFactor * defChPartSize
     val nChPart = nBoundPoints / chPartSize
+    
+    /** Print some information about the final configuration **/
     println(s"Number of boundary points: $nBoundPoints")
     println(s"Number of partitions: $nPart")
     println(s"Final factor: $multiVariateFactor")
-    println("Maximum size in a feature: " + (sortedInfo(0).end - sortedInfo(0).init + 1))
+    println("Maximum size in a feature: " + featInfoBySize(0).size)
     println(s"Default number of boundary points by partition: $defChPartSize")
     println(s"Final number of chromosome partitions: $nChPart")
     println(s"Final size by chromosome partition: $chPartSize")
     
-    val chromChunks = divideChromosome(sortedInfo, nGlobalEval, nChPart)
+    /** Divide the chromosome into chunks of features, using different combinations (multivar. eval.) **/
+    val bChromChunks = sc.broadcast(divideChromosome(featInfoBySize, nGlobalEval, nChPart))
+    val nChunks = bChromChunks.value.length
+    val firstChunk = bChromChunks.value(0)
 
-    println("first chromChunks: " + chromChunks(0)(0).map(_.id).mkString(","))
-    println("Sum by chunk: " + chromChunks(0).map(ch => ch.map(f => f.end - f.init + 1).sum).mkString(","))
-    println("Sum by chunk: " + chromChunks(0).map(_.size).mkString(","))
-    println("Size of the chunkds: " + chromChunks(0).map(_.size).mkString(","))
+    println("first chromChunks: " + firstChunk(0).map(_.id).mkString(","))
+    println("Sum by chunk: " + firstChunk.map(_.map(f => f.end - f.init + 1).sum).mkString(","))
+    println("Sum by chunk: " + firstChunk.map(_.size).mkString(","))
+    println("Size of the chunkds: " + firstChunk.map(_.size).mkString(","))
 
-    val nChunks = chromChunks.length
-    val partitionOrder = Random.shuffle((0 until nChunks).toVector)
     
-    // Start the map partition phase
-    val evolvChrom = data.mapPartitionsWithIndex({ (index, it) =>  
+    (0 until nChunks).map({ comb =>
+      // The relation between the partitions and the chromosome partitions
+      val partitionOrder = Random.shuffle((0 until nChunks).toVector)
       
-      val chrID = partitionOrder(index % nChunks)
-      val chunk = chromChunks(0)(chrID)
-      val sumsize = chunk.map(_.size).sum
-      // Create a data matrix for each partition
-      val datapart = it.toArray.map({ lp =>
-        val inputs = lp.features
-        var sample = new Array[Float](chunk.length + 1)
-        (0 until chunk.length).map({i => sample(i) = inputs(chunk(i).id).toFloat})
-        sample(chunk.length) = lp.label.toFloat
-        sample
-      })
-      
-      // Compute the single chromosome and the seq of cut points for each chunk
-      val chr = new Array[Boolean](sumsize)
-      val cutPoints = new Array[Array[Float]](chunk.length)
-      var ichr = 0
-      (0 until chunk.length).map({ indf =>
-        val feat = chunk(indf)
-        (feat.init to feat.end).map({ ig =>
-          chr(ichr) = bChromosome.value(ig)
-          ichr = ichr + 1
+      // Start the map partition phase
+      val evolvChrom = data.mapPartitionsWithIndex({ (index, it) =>  
+        
+        val chID = partitionOrder(index % nChunks)
+        logInfo("Partition index: " + index)
+        logInfo("Chunk ID: " + chID)
+        val chunk = bChromChunks.value(comb)(chID)
+        val sumsize = chunk.map(_.size).sum
+        
+        // Create a data matrix for each partition
+        val datapart = it.toArray.map({ lp =>
+          var sample = new Array[Float](chunk.length + 1)
+          (0 until chunk.length).map({i => sample(i) = lp.features(chunk(i).id).toFloat})
+          sample(chunk.length) = lp.label.toFloat // class
+          sample
         })
-        cutPoints(indf) = bBoundaryPoints.value.slice(feat.init, feat.end + 1)
-      })
-      
-      // Apply discretizer here!
-      val disc = new EMD(datapart, cutPoints, chr, classDistrib.size)
-      disc.runAlgorithm()
-      val fitness = disc.getBestFitness
-      val ind = disc.getBestIndividual
-      
-      Array((chrID, (ind, fitness))).toIterator
-    }).reduceByKey({case ((v1, f1), (v2, f2)) => if(f1 > f2) (v1, f1) else (v2, f2)}) 
+        
+        // Compute the single chromosome and the seq of cut points for each chunk
+        val initialChr = new Array[Boolean](sumsize)
+        val cutPoints = new Array[Array[Float]](chunk.length)
+        var indc = 0
+        (0 until chunk.length).map({ indf =>
+          val feat = chunk(indf)
+          /*(feat.init to feat.end).map({ ig =>
+            initialChr(ichr) = bBigChromosome.value(ig)
+            ichr = ichr + 1
+          })*/
+          bBigChromosome.value.slice(feat.init, feat.end + 1).copyToArray(initialChr, indc)
+          indc = indc + feat.size
+          cutPoints(indf) = bBoundaryPoints.value.slice(feat.init, feat.end + 1)
+        })
+        
+        // Apply the discretizer here!
+        logInfo(s"Applying discretizer in partition $index")
+        val disc = new EMD(datapart, cutPoints, initialChr, classDistrib.size)
+        disc.runAlgorithm()
+        val fitness = disc.getBestFitness
+        val ind = disc.getBestIndividual
+        
+        Array((chID, (ind, fitness))).toIterator
+      }).reduceByKey({case ((v1, f1), (v2, f2)) => 
+        if(f1 > f2) (v1, f1) else (v2, f2)}) 
+
+      // Copy the partial results to the big chromosome
+      val result = evolvChrom.collect() 
+      for ((chID, (arr, _)) <- result) {
+        for(feat <- bChromChunks.value(comb)(chID))
+          arr.copyToArray(bigChromosome, feat.init)
+      }
+      // Send a new broadcasted copy of the big chromosome
+      bBigChromosome = sc.broadcast(bigChromosome)      
+    })   
     
-    val result = evolvChrom.collect()
     // Update the full list features with the thresholds calculated
-    //val base = Array.empty[Float]
-    //val thresholds = Array.fill(nFeatures)(base)   
-    //thrs.foreach({case (k, vth) => thresholds(k) = vth.toArray})    
-    //logInfo("Number of features with thresholds computed: " + thrs.length)
+    val thresholds = new Array[Array[Float]](nFeatures - 1)
+    bChromChunks.value(0).map{ lf =>
+      lf.map({feat =>  
+        val arr = ArrayBuffer.empty[Float]
+        (feat.init to feat.end).map(ind => if(bigChromosome(ind)) arr += boundaryPoints(ind))
+        thresholds(feat.id) = arr.toArray
+      })
+    }
     
-    new DiscretizerModel(Array.fill(100, 100)(0.0f))
+    new DiscretizerModel(thresholds)
   }
 }
 
@@ -581,11 +386,10 @@ object DEMDdiscretizer {
   def train(
       input: RDD[LabeledPoint],
       continuousFeaturesIndexes: Option[Seq[Int]] = None,
-      maxByPart: Int = 100000,
       nChr: Int = 50,
       multiVariateFactor: Int = 1,
       nLocalEval: Int = 1000,
-      nGlobalEval: Int = 5) = {
-    new DEMDdiscretizer(input).runAll(continuousFeaturesIndexes, maxByPart, nChr, multiVariateFactor, nLocalEval, nGlobalEval)
+      nGlobalEval: Int = 1) = {
+    new DEMDdiscretizer(input).runAll(continuousFeaturesIndexes, nChr, multiVariateFactor, nLocalEval, nGlobalEval)
   }
 }
