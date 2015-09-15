@@ -91,7 +91,7 @@ public class EMD {
     	population = new ArrayList <Chromosome> (pop_length);
     	best_fitness = 100f;
     	if(initial_chr == null) {
-    		this.initial_chr = new Chromosome (initial_chr);
+    		this.initial_chr = new Chromosome (n_cut_points, true);
     	} else {
     		if(initial_chr.length == max_cut_points)
         		this.initial_chr = new Chromosome (initial_chr);
