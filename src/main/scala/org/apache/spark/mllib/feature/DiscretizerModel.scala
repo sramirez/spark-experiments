@@ -82,11 +82,11 @@ class DiscretizerModel (val thresholds: Array[Array[Float]]) extends VectorTrans
   }
   
   private def binarySearch[A <% Ordered[A]](a: Array[A], v: A) = {
-    def recurse(low: Int, high: Int): Option[Int] = (low + high) / 2 match {
-      case _ if high < low => None
+    def recurse(low: Int, high: Int): Int = (low + high) / 2 match {
+      case _ if high < low => high + 1
       case mid if a(mid) > v => recurse(low, mid - 1)
       case mid if a(mid) < v => recurse(mid + 1, high)
-      case mid => Some(mid)
+      case mid => mid
     }
     recurse(0, a.size - 1)
   }
@@ -99,19 +99,6 @@ class DiscretizerModel (val thresholds: Array[Array[Float]]) extends VectorTrans
    * 
    * Note: The last threshold must be always Positive Infinity
    */
-  private def assignDiscreteValue(value: Float, thresholds: Array[Float]) = {
-    /*if(thresholds.isEmpty) {
-     value  
-    }else {
-      val index = thresholds.indexWhere(value <= _)
-      if (index > -1) {
-        index
-      } else {
-        0
-      }     
-    } */
-    val index = binarySearch(thresholds, value)
-    index.getOrElse(0)
-  }
+  private def assignDiscreteValue(value: Float, thresholds: Array[Float]) = binarySearch(thresholds, value)
 
 }
