@@ -80,8 +80,8 @@ public class EMD {
     	max_cut_points = 0;
     	for (int i=0; i< cut_points.length; i++) {
     		if (cut_points[i] != null) {
-    			if(!isAscendingSorted(cut_points[i]))
-    					throw new ExceptionInInitializerError("Cut points must be sorted");
+    			//if(!isAscendingSorted(cut_points[i]))
+    			//		throw new ExceptionInInitializerError("Cut points must be sorted");
     			max_cut_points += cut_points[i].length;
     		}
     			
@@ -151,8 +151,9 @@ public class EMD {
     	do {
     		
     		// Reduction?
-    		reduction = (n_cut_points * (1 - pReduction) > PROPER_SIZE_CHROMOSOME) &&
-    				(n_eval / (max_eval * pEvaluationsForReduction) > next_reduction);
+    		/*reduction = (n_cut_points * (1 - pReduction) > PROPER_SIZE_CHROMOSOME) &&
+    				(n_eval / (max_eval * pEvaluationsForReduction) > next_reduction);*/
+    		reduction = false;
     		if (reduction) {
     			// We reduce the population, and it is not evaluated this time
     			reduction(cut_points_log, ((Chromosome)population.get(0)).getIndividual());    	    	
@@ -216,7 +217,7 @@ public class EMD {
     			System.out.println("Restart!!");
     			restartPopulation();
     			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
-    	    	best_fitness = 100.0f;
+    	    	best_fitness = 100.f;
     			n_restart_not_improving++;
 
     			//System.out.println("Inicio de Evaluación por threshold!!!!!");
@@ -236,11 +237,11 @@ public class EMD {
     	// The evaluations have finished now, so we select the individual with best fitness
     	Collections.sort(population);
     	Chromosome best = population.get(0);
-    	System.out.println("Best Chr.: " + best.toString());
-    	System.out.println("Best Fitness: "  + best.fitness);
-    	System.out.println("Number of selected cutpoints/max points: " 
-    			+ best.n_cutpoints + "/" + max_cut_points);
-    	System.out.println("Error in train: " + best.perc_err);
+    	//System.out.println("Best Chr.: " + best.toString());
+    	//System.out.println("Best Fitness: "  + best.fitness);
+    	//System.out.println("Number of selected cutpoints/max points: " 
+    	//		+ best.n_cutpoints + "/" + max_cut_points);
+    	//System.out.println("Error in train: " + best.perc_err);
     	
     	this.best = best;    	
     	//return new Result(best.getIndividual(), cut_points);
@@ -270,9 +271,9 @@ public class EMD {
 						if(found) result[oacc + pind - 1] = true;        					
     				}
     			}
+				acc += cut_points[i].length;
+				oacc += original_cut_points[i].length;
 			}
-			acc += cut_points[i].length;
-			oacc += original_cut_points[i].length;
 		}
 		return result;
     }

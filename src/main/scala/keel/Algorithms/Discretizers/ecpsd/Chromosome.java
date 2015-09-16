@@ -1,9 +1,7 @@
 package keel.Algorithms.Discretizers.ecpsd;
 
 import weka.classifiers.bayes.NaiveBayes;
-import weka.classifiers.trees.J48;
 import weka.core.DenseInstance;
-import weka.core.Instance;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -16,7 +14,7 @@ import java.util.Random;
  * <p>Company: KEEL </p>
  *
  * @author Written by Victoria Lopez (University of Granada) 30/04/2011
- * @author Modified by Victoria Lopez (University of Granada) 04/05/2011
+ * @author Modified by Sergio Ramirez (University of Granada) 04/05/2014
  * @version 1.5
  * @since JDK1.5
  */
@@ -185,14 +183,25 @@ public class Chromosome implements Comparable {
     public void evaluate (weka.core.Instances base, float[][] dataset, float [][] cut_points, 
     		int initial_cut_points, float alpha, float beta) {
     	
-    	int n_selected_cut_points = 0;
     	weka.core.Instances datatrain = new weka.core.Instances(base);
     	int nInputs = dataset[0].length - 1;
     	
     	// Obtain the number of cut points
-    	for (int i=0; i < individual.length; i++) {
-    		if (individual[i])
-    			n_selected_cut_points++;
+    	ArrayList<Float[]> selected_points = 
+    			new ArrayList<Float[]>(cut_points.length);
+    	int acc = 0, n_selected_cut_points = 0;
+    	
+    	for (int i=0; i < cut_points.length; i++) {
+    		ArrayList<Float> arr = new ArrayList<Float>();
+    		for (int j = 0; j < cut_points[i].length; j++) {
+    			if (individual[acc]){
+    				arr.add(cut_points[i][j]);
+    				n_selected_cut_points++;
+    			} 
+			}
+    		Float[] aux = new Float[arr.size()];
+    		selected_points.add(arr.toArray(aux));
+    		acc += cut_points[i].length;
     	}
     	
 	    /*Instances adaptation to WEKA format*/
@@ -201,16 +210,11 @@ public class Chromosome implements Comparable {
     		float [] sample = dataset[i];
     		double[] tmp = new double[sample.length];    		
     		for (j=0; j < nInputs; j++) 
-    			tmp[j] = discretize (sample[j], cut_points[j]);
+    			tmp[j] = discretize (sample[j], selected_points.get(j));
     		
-    		tmp[j] = sample[j]; // the class
-    		Instance inst = new DenseInstance(1.0, tmp);
+    		tmp[j] = sample[nInputs]; // the class
+    		DenseInstance inst = new DenseInstance(1.0, tmp);
     		
-    		/* Set missing values */
-    		/*for(j=0; j < dataset.getMissing(i).length; j++) {
-    			if(dataset.getMissing(i)[j]) 
-    				inst.setMissing(j);
-    		}*/    		
     		datatrain.add(inst);
     	}    	
     	
@@ -232,7 +236,7 @@ public class Chromosome implements Comparable {
 	    for (int i=0; i < datatrain.numInstances(); i++) {
 	    	try {
 	    		if ((int)baseTree.classifyInstance(datatrain.instance(i)) 
-	    				!= dataset[i][nInputs + 1]) {
+	    				!= dataset[i][nInputs]) {
 	    			c45er++;
 	    		}
 		    } catch (Exception ex) {
@@ -256,7 +260,7 @@ public class Chromosome implements Comparable {
 	    for (int i=0; i < datatrain.numInstances(); i++) {
 	    	try {
 	    		if ((int)baseBayes.classifyInstance(datatrain.instance(i)) 
-	    				!= dataset[i][nInputs + 1]) {
+	    				!= dataset[i][nInputs]) {
 	    			nber++;
 	    		}
 		    } catch (Exception ex) {
@@ -273,7 +277,7 @@ public class Chromosome implements Comparable {
         rest %= 1000;
         System.out.println("Wrapper execution Time: " + hours + ":" + minutes + ":" +
                 seconds + "." + rest);   */
-	    float p_err = (float) nber / initial_cut_points;
+	    float p_err = (float) nber / datatrain.numInstances();
 	    //float proportion = (double) (dataset.getnData() * 2) / (double) initial_cut_points;
 	    float perc_points= (float) n_selected_cut_points / initial_cut_points;
         /* fitness = alpha * ((double) n_selected_cut_points / (double) initial_cut_points) 
@@ -445,35 +449,6 @@ public class Chromosome implements Comparable {
     public boolean [] getIndividual () {
     	return individual;
     }
-    
-/*	private int discretize (int attribute, float value, float [][] cut_points, int nInputs) {
-		int index_att, index_values, j;
-		
-		if (cut_points[attribute] == null) 
-			return 0;
-		
-		index_att = 0;
-		for (int i=0; (i<nInputs) && (i<attribute); i++) {
-			if (cut_points[i] != null) {
-				index_att += cut_points[i].length;
-			}
-		}
-		
-		index_values = 0;
-		j = 0;
-		for (int i=index_att; i<(index_att+cut_points[attribute].length); i++) {
-			if ((value < cut_points[attribute][j]) && (individual[i])) { 
-				return index_values;
-			}
-			
-			if (individual[i]) {
-				index_values++;
-			}
-			j++;
-		}
-		
-		return index_values++;
-	}*/
 	
     /**
      * Obtains the discretized value of a real data considering the
@@ -484,15 +459,14 @@ public class Chromosome implements Comparable {
      * @param cp Cut points used to discretize (selected by the chromosome)
      * @return	a discrete integer value
      */
-    private int discretize(float value, float[] cp) {
+    private int discretize(float value, Float[] cp) {
     	if(cp == null) return 0; // No boundary points
     	int ipoint = Arrays.binarySearch(cp, value);
-    	if(ipoint != -1)
+    	if(ipoint < 0) 
+    		return Math.abs(ipoint) - 1;
+    	else
     		return ipoint;
-		else
-			return 0; // An empty list of points implies a single discrete value
     }
-
 	
     public String toString() {
     	String output = "";
