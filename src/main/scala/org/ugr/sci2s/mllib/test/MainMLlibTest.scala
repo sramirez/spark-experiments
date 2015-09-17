@@ -81,8 +81,8 @@ object MainMLlibTest {
 		val discretization = params.get("disc") match {
 			case Some(s) if s matches "(?i)mdlp" => 
 		        val disc = (train: RDD[LabeledPoint]) => {
-              //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-              val discretizedFeat: Option[Seq[Int]] = None
+              val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+              //val discretizedFeat: Option[Seq[Int]] = None
               val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
         
               println("*** Discretization method: Fayyad discretizer (MDLP)")
@@ -97,12 +97,28 @@ object MainMLlibTest {
             (Some(disc), saveDisc)
       case Some(s) if s matches "(?i)ecpsd" => 
             val disc = (train: RDD[LabeledPoint]) => {
-              //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-              val discretizedFeat: Option[Seq[Int]] = None              
+              val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+              //val discretizedFeat: Option[Seq[Int]] = None   
+              val nChr = MLEU.toInt(params.getOrElse("disc-nchrom", "50"), 50)
+              val mvfactor = MLEU.toInt(params.getOrElse("disc-mvfactor", "1"), 1)
+              val ngeval = MLEU.toInt(params.getOrElse("disc-geval", "5000"), 5000)
+              val nleval = MLEU.toInt(params.getOrElse("disc-nleval", "2"), 2)
+              val nmeval = MLEU.toInt(params.getOrElse("disc-nmeval", "3"), 3)
+              
               println("*** Discretization method: ECPSD discretizer")
+              println("*** Number of chromosomes: " + nChr)
+              println("*** Multivariate Factor: " + mvfactor)
+              println("*** Number of genetic evaluations: " + ngeval)
+              println("*** Number of local evaluations: " + nleval)
+              println("*** Number of multivariate evaluations: " + nmeval)              
               
               val discretizer = DEMDdiscretizer.train(train,
-                  discretizedFeat) // continuous features
+                  discretizedFeat,
+                  nChr,
+                  mvfactor,
+                  ngeval, 
+                  nleval,
+                  nmeval) // continuous features
               discretizer
             }
             (Some(disc), saveDisc)

@@ -466,7 +466,7 @@ object MLExperimentUtils {
   		    output += "Test Confusion Matrix\n" + tststat.confusionMatrix.toString + "\n"
           output += "Train Confusion Matrix\n" + trastat.confusionMatrix.toString + "\n"
           output += "F-Measure (tra/tst):" + trastat.fMeasure + " - " + tststat.fMeasure + "\n"
-          output += "Precision (tra/tst):" + trastat.fMeasure + " - " + tststat.precision + "\n"
+          output += "Precision (tra/tst):" + trastat.precision + " - " + tststat.precision + "\n"
           output += "Recall(tra/tst):" + trastat.recall + " - " + tststat.recall + "\n"
           val traauc = (1 + trastat.truePositiveRate(1.0) - trastat.falsePositiveRate(1.0)) / 2
           val tstauc = (1 + tststat.truePositiveRate(1.0) - tststat.falsePositiveRate(1.0)) / 2
