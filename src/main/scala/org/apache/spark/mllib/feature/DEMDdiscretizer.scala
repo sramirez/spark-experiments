@@ -205,6 +205,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     }    
     chunks
   }
+  
+  private def updateBigChromosome(newch: Array[Boolean]) = data.context.broadcast(newch)
  
   /**
    * Run the distributed ECSPD discretizer on input data.
@@ -219,8 +221,9 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       contFeat: Option[Seq[Int]],
       nChr: Int,
       userFactor: Int,
+      nGeneticEval: Int,
       nLocalEval: Int,
-      nGlobalEval: Int) = {
+      nMultiVariateEval: Int) = {
     
     if (data.getStorageLevel == StorageLevel.NONE) {
       logWarning("The input data is not directly cached, which may hurt performance if its"
@@ -249,9 +252,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         classDistrib.toMap, nLabels, isDense).cache()
       
     // Order the boundary points by size and by id to yield the vector of features
-    val nBoundPoints = boundaryPairs.count().toInt  
-    val countByAtt = boundaryPairs.mapValues(_ => 1).reduceByKey(_ + _)//.cache()
-    val featById = countByAtt.sortByKey().collect()
+    val nBoundPoints = boundaryPairs.count().toInt
+    val featById = boundaryPairs.mapValues(_ => 1).reduceByKey(_ + _).sortByKey().collect()
     
     val featInfo = new Array[Feature](featById.length)
     var iindex = 0
@@ -260,7 +262,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       featInfo(i) = new Feature(id, iindex, iindex + l - 1)
       iindex += l
     }    
-    val featInfoBySize = featInfo.sortBy(_.size) // sorted in descending order   
+    val featInfoBySize = featInfo.sortBy(-_.size) // sorted in descending order
     
     /** Get in the driver the vector of boundary points and the big chromosome **/
     val boundaryPoints = boundaryPairs.values.collect()
@@ -272,96 +274,104 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val nPart = data.partitions.size
     val defChPartSize = nBoundPoints / nPart    
     // The largest feature (the last one) should not be splitted in several parts
-    val maxChPartSize = math.max(featInfoBySize.last.size, defChPartSize).toFloat
+    val maxChPartSize = math.max(featInfoBySize.last.size, defChPartSize)
     // Compute the factor of multivariety according to the final size
-    val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize / defChPartSize).toInt)
+    val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize.toFloat / defChPartSize).toInt)
     val chPartSize = multiVariateFactor * defChPartSize
     val nChPart = nBoundPoints / chPartSize
     
     /** Print some information about the final configuration **/
-    println(s"Number of boundary points: $nBoundPoints")
-    println(s"Number of partitions: $nPart")
-    println(s"Final factor: $multiVariateFactor")
-    println("Maximum size in a feature: " + featInfoBySize(0).size)
+    println(s"Total number of boundary points: $nBoundPoints")
+    println(s"Total number of data partitions: $nPart")
+    println(s"Final Multivariate Factor: $multiVariateFactor")
+    println("Maximum feature size: " + featInfoBySize(0).size)
     println(s"Default number of boundary points by partition: $defChPartSize")
     println(s"Final number of chromosome partitions: $nChPart")
     println(s"Final size by chromosome partition: $chPartSize")
     
     /** Divide the chromosome into chunks of features, using different combinations (multivar. eval.) **/
-    val bChromChunks = sc.broadcast(divideChromosome(featInfoBySize, nGlobalEval, nChPart))
-    val nChunks = bChromChunks.value.length
+    val bChromChunks = sc.broadcast(divideChromosome(featInfoBySize, nMultiVariateEval, nChPart))
+    //val nChunks = bChromChunks.value.length
     val firstChunk = bChromChunks.value(0)
 
-    println("first chromChunks: " + firstChunk(0).map(_.id).mkString(","))
-    println("Sum by chunk: " + firstChunk.map(_.map(f => f.end - f.init + 1).sum).mkString(","))
-    println("Sum by chunk: " + firstChunk.map(_.size).mkString(","))
-    println("Size of the chunkds: " + firstChunk.map(_.size).mkString(","))
+    println("first chromChunks: " + firstChunk.map(_.map(_.id)).mkString(","))
+    println("Size by chunk: " + firstChunk.map(_.size).mkString(","))
+    println("Sum by chunk: " + firstChunk.map(_.map(_.size).sum).mkString(","))
 
-    
-    (0 until nChunks).map({ comb =>
-      // The relation between the partitions and the chromosome partitions
-      val partitionOrder = Random.shuffle((0 until nChunks).toVector)
-      
-      // Start the map partition phase
-      val evolvChrom = data.mapPartitionsWithIndex({ (index, it) =>  
+    //val comb = 0
+    for(comb <- 0 until nMultiVariateEval) {
+      for(nleval <- 0 until nLocalEval) {
+          // Defined the correspondence between the partitions and the chromosome partitions
+        val partitionOrder = Random.shuffle((0 until nChPart).toVector)
         
-        val chID = partitionOrder(index % nChunks)
-        logInfo("Partition index: " + index)
-        logInfo("Chunk ID: " + chID)
-        val chunk = bChromChunks.value(comb)(chID)
-        val sumsize = chunk.map(_.size).sum
+        // Start the manp partition phase
+        val evolvChrom = data.mapPartitionsWithIndex({ (index, it) =>  
+          
+          if(index < partitionOrder.length) {
+            //val chID = partitionOrder(index % nChPart)
+            val chID = partitionOrder(index)
+            val chunk = bChromChunks.value(comb)(chID)
+            val sumsize = chunk.map(_.size).sum
+            
+            // Create a data matrix for each partition
+            val datapart = it.toArray.map({ lp =>
+              var sample = new Array[Float](chunk.length + 1)
+              (0 until chunk.length).map({i => sample(i) = lp.features(chunk(i).id).toFloat})
+              sample(chunk.length) = lp.label.toFloat // class
+              sample
+            })
+            
+            if(datapart.length > 0) {
+              // Compute the single chromosome and the seq of cut points for each chunk
+              val initialChr = new Array[Boolean](sumsize)
+              val cutPoints = new Array[Array[Float]](chunk.length)
+              var indc = 0
+              (0 until chunk.length).map({ indf =>
+                val feat = chunk(indf)
+                bBigChromosome.value.slice(feat.init, feat.end + 1).copyToArray(initialChr, indc)
+                indc = indc + feat.size
+                cutPoints(indf) = bBoundaryPoints.value.slice(feat.init, feat.end + 1)
+              })
+              
+              // Apply the discretizer here!
+              //logInfo(s"Applying discretizer in partition $index")
+              val disc = new EMD(datapart, cutPoints, initialChr, nGeneticEval, classDistrib.size)
+              disc.runAlgorithm()
+              val fitness = disc.getBestFitness
+              val ind = disc.getBestIndividual
+              
+              Array((chID, (ind, fitness))).toIterator
+              //Array((chID, (Array.fill(sumsize)(false), .0f))).toIterator      
+            } else {
+               Iterator.empty 
+            }        
+          } else {
+            Iterator.empty 
+          }
+        })//.reduceByKey({case ((v1, f1), (v2, f2)) => 
+          //if(f1 > f2) (v1, f1) else (v2, f2)}) 
         
-        // Create a data matrix for each partition
-        val datapart = it.toArray.map({ lp =>
-          var sample = new Array[Float](chunk.length + 1)
-          (0 until chunk.length).map({i => sample(i) = lp.features(chunk(i).id).toFloat})
-          sample(chunk.length) = lp.label.toFloat // class
-          sample
-        })
+  
+        // Copy the partial results to the big chromosome
+        val result = evolvChrom.collect()
+        println(s"Result for local: $nleval, multiVar: $comb - " + result.sortBy(_._1).mkString("\n"))
+        for ((chID, (arr, _)) <- result) {
+          for(feat <- bChromChunks.value(comb)(chID))
+            arr.copyToArray(bigChromosome, feat.init)
+        }
         
-        // Compute the single chromosome and the seq of cut points for each chunk
-        val initialChr = new Array[Boolean](sumsize)
-        val cutPoints = new Array[Array[Float]](chunk.length)
-        var indc = 0
-        (0 until chunk.length).map({ indf =>
-          val feat = chunk(indf)
-          /*(feat.init to feat.end).map({ ig =>
-            initialChr(ichr) = bBigChromosome.value(ig)
-            ichr = ichr + 1
-          })*/
-          bBigChromosome.value.slice(feat.init, feat.end + 1).copyToArray(initialChr, indc)
-          indc = indc + feat.size
-          cutPoints(indf) = bBoundaryPoints.value.slice(feat.init, feat.end + 1)
-        })
-        
-        // Apply the discretizer here!
-        logInfo(s"Applying discretizer in partition $index")
-        val disc = new EMD(datapart, cutPoints, initialChr, classDistrib.size)
-        disc.runAlgorithm()
-        val fitness = disc.getBestFitness
-        val ind = disc.getBestIndividual
-        
-        Array((chID, (ind, fitness))).toIterator
-      }).reduceByKey({case ((v1, f1), (v2, f2)) => 
-        if(f1 > f2) (v1, f1) else (v2, f2)}) 
-
-      // Copy the partial results to the big chromosome
-      val result = evolvChrom.collect() 
-      for ((chID, (arr, _)) <- result) {
-        for(feat <- bChromChunks.value(comb)(chID))
-          arr.copyToArray(bigChromosome, feat.init)
-      }
-      // Send a new broadcasted copy of the big chromosome
-      bBigChromosome = sc.broadcast(bigChromosome)      
-    })   
+        // Send a new broadcasted copy of the big chromosome
+        bBigChromosome = updateBigChromosome(bigChromosome) // Important to avoid task serialization problem
+      }      
+    }
     
     // Update the full list features with the thresholds calculated
-    val thresholds = new Array[Array[Float]](nFeatures - 1)
+    val thresholds = Array.fill[Array[Float]](nFeatures)(Array.empty[Float])
     bChromChunks.value(0).map{ lf =>
       lf.map({feat =>  
         val arr = ArrayBuffer.empty[Float]
         (feat.init to feat.end).map(ind => if(bigChromosome(ind)) arr += boundaryPoints(ind))
-        thresholds(feat.id) = arr.toArray
+        thresholds(feat.id) = if(arr.length > 0) arr.toArray else Array(Float.PositiveInfinity)
       })
     }
     
@@ -388,8 +398,10 @@ object DEMDdiscretizer {
       continuousFeaturesIndexes: Option[Seq[Int]] = None,
       nChr: Int = 50,
       multiVariateFactor: Int = 1,
-      nLocalEval: Int = 1000,
-      nGlobalEval: Int = 1) = {
-    new DEMDdiscretizer(input).runAll(continuousFeaturesIndexes, nChr, multiVariateFactor, nLocalEval, nGlobalEval)
+      nGeneticEval: Int = 5000,
+      nLocalEval: Int = 2,
+      nMultiVariateEval: Int = 2) = {
+    new DEMDdiscretizer(input).runAll(continuousFeaturesIndexes, nChr, 
+        multiVariateFactor, nGeneticEval, nLocalEval, nMultiVariateEval)
   }
 }
