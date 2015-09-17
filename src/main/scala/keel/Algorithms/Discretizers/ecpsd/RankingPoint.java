@@ -1,8 +1,9 @@
 package keel.Algorithms.Discretizers.ecpsd;
 
+import java.io.Serializable;
 import java.util.Comparator;
 
-public class RankingPoint implements Comparable {
+public class RankingPoint implements Comparable, Serializable {
 	 
 	  public int id;
 	  public int rank;

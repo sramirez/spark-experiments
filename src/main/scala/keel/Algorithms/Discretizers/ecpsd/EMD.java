@@ -1,5 +1,6 @@
 package keel.Algorithms.Discretizers.ecpsd;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -19,8 +20,12 @@ import java.util.Random;
  * @since JDK1.5
  */
 
-public class EMD {
+public class EMD implements Serializable{
 	
+	/**
+	 * 
+	 */
+	private static final long serialVersionUID = 7575712219028489742L;
 	private long seed;
 	private float[][] cut_points;
 	private float[][] original_cut_points;
@@ -101,14 +106,14 @@ public class EMD {
     	
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, int nClasses) {    	
-    	this(964534618L, current_dataset, cut_points, 
-    			1000, 50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, null);
+    public EMD (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses) {    	
+    	this(964534618L, current_dataset, cut_points, nEval, 
+    			50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, null);
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, int nClasses) {
-    	this(964534618L, current_dataset, cut_points, 
-    			1000, 50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, initial_chr);
+    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, int nEval, int nClasses) {
+    	this(964534618L, current_dataset, cut_points, nEval, 
+    			50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, initial_chr);
     }
     
     /**
@@ -214,7 +219,7 @@ public class EMD {
     		
     		// If we do not improve our current population for several trials, then we should restart the population
     		if (threshold < 0) {
-    			System.out.println("Restart!!");
+    			//System.out.println("Restart!!");
     			restartPopulation();
     			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
     	    	best_fitness = 100.f;

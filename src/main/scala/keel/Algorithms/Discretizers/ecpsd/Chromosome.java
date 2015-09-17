@@ -3,6 +3,7 @@ package keel.Algorithms.Discretizers.ecpsd;
 import weka.classifiers.bayes.NaiveBayes;
 import weka.core.DenseInstance;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
@@ -19,7 +20,7 @@ import java.util.Random;
  * @since JDK1.5
  */
 
-public class Chromosome implements Comparable {
+public class Chromosome implements Comparable, Serializable {
 	private boolean [] individual; // Boolean array selecting cutpoints from a list of cutpoints
 	private boolean n_e; // Indicates whether this chromosome has been evaluated or not
 	float fitness;// Fitness associated to the cut points represented by the boolean array
@@ -365,7 +366,7 @@ public class Chromosome implements Comparable {
     	Random rnd = new Random();
     	for (int j=0; j<n_swaps; j++) {
     		different_values--;
-    		pos = rnd.nextInt(different_values);
+    		pos = rnd.nextInt(different_values + 1);
     		
     		boolean tmp = descendant1.individual[different_position[pos]];
     		descendant1.individual[different_position[pos]] = descendant2.individual[different_position[pos]];
