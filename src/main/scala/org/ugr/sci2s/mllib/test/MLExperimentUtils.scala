@@ -129,7 +129,7 @@ object MLExperimentUtils {
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
 					
-          val dtrain = train.persist(StorageLevel.MEMORY_ONLY_SER)
+          val dtrain = train.persist(StorageLevel.MEMORY_ONLY)
           val c = dtrain.count()
           
           val initStartTime = System.nanoTime()
@@ -203,7 +203,7 @@ object MLExperimentUtils {
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
 					
-          val fstrain = train.persist(StorageLevel.MEMORY_ONLY_SER)
+          val fstrain = train.persist(StorageLevel.MEMORY_ONLY)
           val c = fstrain.count()
           
           val initStartTime = System.nanoTime()
