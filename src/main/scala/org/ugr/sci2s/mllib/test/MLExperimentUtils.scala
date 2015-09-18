@@ -129,11 +129,10 @@ object MLExperimentUtils {
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
 					
-          val dtrain = train.persist(StorageLevel.MEMORY_ONLY)
-          val c = dtrain.count()
+          train.count()
           
           val initStartTime = System.nanoTime()
-					val discAlgorithm = discretize(dtrain)
+					val discAlgorithm = discretize(train)
 					val discTime = (System.nanoTime() - initStartTime) / 1e9 
           
           val thrsRDD = sc.parallelize(discAlgorithm.thresholds.zipWithIndex)
@@ -144,12 +143,16 @@ object MLExperimentUtils {
           thrsRDD.saveAsTextFile(outputDir + "/discThresholds_" + iteration)
           
           // More efficient than by-instance version
-          val discData = discAlgorithm.transform(dtrain.map(_.features))
-            .zip(dtrain.map(_.label))
+          val discData = discAlgorithm.transform(train.map(_.features))
+            .zip(train.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
+            .persist(StorageLevel.MEMORY_ONLY_SER)
           val discTestData = discAlgorithm.transform(test.map(_.features))
             .zip(test.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
+            .persist(StorageLevel.MEMORY_ONLY_SER)
+            
+          train.unpersist(); test.unpersist();
           
           // Save discretized data 
           if(save) {
@@ -162,7 +165,7 @@ object MLExperimentUtils {
 					val strTime = sc.parallelize(Array(discTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/disc_time_" + iteration)
           
-          dtrain.unpersist()
+          //dtrain.unpersist()
 					
 					(discData, discTestData, discTime)
 			}		
@@ -201,18 +204,19 @@ object MLExperimentUtils {
         
 				(redTrain, redTest, FSTime)
 			} catch {
-				case iie: org.apache.hadoop.mapred.InvalidInputException =>
-					
-          val fstrain = train.persist(StorageLevel.MEMORY_ONLY_SER)
-          val c = fstrain.count()
+				case iie: org.apache.hadoop.mapred.InvalidInputException =>          
           
+          train.count()
           val initStartTime = System.nanoTime()
-					val featureSelector = fs(fstrain)
+					val featureSelector = fs(train)
 					val FSTime = (System.nanoTime() - initStartTime) / 1e9
           
           
-          val redTrain = fstrain.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
+          val redTrain = train.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
+            .persist(StorageLevel.MEMORY_ONLY_SER)
           val redTest = test.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
+            .persist(StorageLevel.MEMORY_ONLY_SER)
+          train.unpersist(); test.unpersist()
           
           // Save reduced data 
           if(save) {
@@ -227,8 +231,6 @@ object MLExperimentUtils {
 					parFSscheme.saveAsTextFile(outputDir + "/fs_scheme_" + iteration)
 					val strTime = sc.parallelize(Array(FSTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/fs_time_" + iteration)
-          
-          fstrain.unpersist()
 					
 					(redTrain, redTest, FSTime)
 			}
@@ -262,15 +264,18 @@ object MLExperimentUtils {
 				(traValuesAndPreds, tstValuesAndPreds, classifficationTime)
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException => 
-          val ctrain = train.persist(StorageLevel.MEMORY_ONLY)
-          val nInstances = ctrain.count() // to persist train and not to affect time measurements
+          
+          train.count()
 					
           val initStartTime = System.nanoTime()	
-					val classificationModel = classify(ctrain)
+					val classificationModel = classify(train)
 					val classificationTime = (System.nanoTime() - initStartTime) / 1e9
 					
-					val traValuesAndPreds = computePredictions2(classificationModel, ctrain).cache()
-					val tstValuesAndPreds = computePredictions2(classificationModel, test).cache()
+					val traValuesAndPreds = computePredictions2(classificationModel, test)
+            .persist(StorageLevel.MEMORY_ONLY_SER)
+					val tstValuesAndPreds = computePredictions2(classificationModel, test)
+            .persist(StorageLevel.MEMORY_ONLY_SER)
+          train.unpersist(); test.unpersist();
 					
           //val c = tstValuesAndPreds.count()
 					// Save prediction results
@@ -282,8 +287,8 @@ object MLExperimentUtils {
           val strTime = sc.parallelize(Array(classificationTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/classification_time_" + iteration)
           
-          ctrain.unpersist()
-					
+          //ctrain.unpersist()
+          
 					(traValuesAndPreds, tstValuesAndPreds, classificationTime)
 			}
 		}
@@ -372,9 +377,12 @@ object MLExperimentUtils {
 				val rawtst = readFile(testFile)
 				
         val nparttr = rawtra.partitions.size; val npartts = rawtst.partitions.size
-        val trainData = if(npart <= nparttr) rawtra.coalesce(npart, false).cache() else rawtra.repartition(npart).cache()
+        val trainData = if(npart <= nparttr) rawtra.coalesce(npart, false).persist(StorageLevel.MEMORY_ONLY_SER) else 
+          rawtra.repartition(npart).persist(StorageLevel.MEMORY_ONLY_SER)
+        println("Number of instances in training: " + trainData.count())
         //val tstData = if(npart > npartts) rawtst.coalesce(npart, false) else rawtst.repartition(npart)
-        val testData = rawtst
+        val testData = rawtst.persist(StorageLevel.MEMORY_ONLY_SER)
+        println("Number of instances in test: " + testData.count())
         
 				// Discretization
 				var trData = trainData; var tstData = testData        
