@@ -28,7 +28,7 @@ public class EMD implements Serializable{
 	private static final long serialVersionUID = 7575712219028489742L;
 	private long seed;
 	private float[][] cut_points;
-	private float[][] original_cut_points;
+	//private float[][] original_cut_points;
 	private float[][] dataset;
 	private Chromosome initial_chr;
 	private Chromosome best;
@@ -70,7 +70,7 @@ public class EMD implements Serializable{
     	this.seed = seed;
     	this.dataset = dataset;
     	this.cut_points = cut_points;
-    	this.original_cut_points = cut_points.clone();
+    	//this.original_cut_points = cut_points.clone();
     	max_eval = eval;
     	pop_length = popLength;
     	r = restart_per;
@@ -257,7 +257,8 @@ public class EMD implements Serializable{
     }
     
     public boolean[] getBestIndividual(){
-    	if(max_cut_points == best.getIndividual().length) 
+    	return best.getIndividual();
+    	/*if(max_cut_points == best.getIndividual().length) 
     		return best.getIndividual();
     	
 		boolean[] result = new boolean[max_cut_points];
@@ -280,7 +281,7 @@ public class EMD implements Serializable{
 				oacc += original_cut_points[i].length;
 			}
 		}
-		return result;
+		return result;*/
     }
     
     private void reduction(int[] cut_points_log, boolean[] best_chr){
