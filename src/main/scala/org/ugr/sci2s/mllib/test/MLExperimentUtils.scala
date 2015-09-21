@@ -147,10 +147,12 @@ object MLExperimentUtils {
             .zip(train.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
             .persist(StorageLevel.MEMORY_ONLY)
+          val c = discData.count()
           val discTestData = discAlgorithm.transform(test.map(_.features))
             .zip(test.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
             .persist(StorageLevel.MEMORY_ONLY)
+          val c1 = discTestData.count()
             
           train.unpersist(); test.unpersist();
           
@@ -279,7 +281,7 @@ object MLExperimentUtils {
 					val tstValuesAndPreds = computePredictions2(classificationModel, test)
             .persist(StorageLevel.MEMORY_ONLY)
           val c2 = tstValuesAndPreds.count()
-          train.unpersist(); test.unpersist();
+          //train.unpersist(); test.unpersist();
 					
           //val c = tstValuesAndPreds.count()
 					// Save prediction results
