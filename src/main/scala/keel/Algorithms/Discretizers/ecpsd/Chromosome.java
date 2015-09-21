@@ -195,7 +195,7 @@ public class Chromosome implements Comparable, Serializable {
     	for (int i=0; i < cut_points.length; i++) {
     		ArrayList<Float> arr = new ArrayList<Float>();
     		for (int j = 0; j < cut_points[i].length; j++) {
-    			if (individual[acc]){
+    			if (individual[acc + j]){
     				arr.add(cut_points[i][j]);
     				n_selected_cut_points++;
     			} 
@@ -268,6 +268,7 @@ public class Chromosome implements Comparable, Serializable {
 		    	ex.printStackTrace();
 		    }
 	    }
+	    
 	    /*long t_fin = System.currentTimeMillis();
         long t_exec = t_fin - t_ini;
         long hours = t_exec / 3600000;
