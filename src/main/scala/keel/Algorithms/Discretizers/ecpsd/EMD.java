@@ -111,9 +111,9 @@ public class EMD implements Serializable{
     			50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, null);
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, int nEval, int nClasses) {
+    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, float alpha, int nEval, int nClasses) {
     	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, initial_chr);
+    			50, .8f, alpha, 1-alpha, .25f, .05f, .1f, .5f, nClasses, initial_chr);
     }
     
     /**

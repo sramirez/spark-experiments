@@ -222,6 +222,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       nChr: Int,
       userFactor: Int,
       nGeneticEval: Int,
+      alpha: Float,
       nLocalEval: Int,
       nMultiVariateEval: Int) = {
     
@@ -335,7 +336,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
               
               // Apply the discretizer here!
               //logInfo(s"Applying discretizer in partition $index")
-              val disc = new EMD(datapart, cutPoints, initialChr, nGeneticEval, classDistrib.size)
+              val disc = new EMD(datapart, cutPoints, initialChr, alpha, nGeneticEval, classDistrib.size)
               disc.runAlgorithm()
               val fitness = disc.getBestFitness
               val ind = disc.getBestIndividual
@@ -399,9 +400,10 @@ object DEMDdiscretizer {
       nChr: Int = 50,
       multiVariateFactor: Int = 1,
       nGeneticEval: Int = 5000,
+      alpha: Float = .7f,
       nLocalEval: Int = 2,
       nMultiVariateEval: Int = 2) = {
     new DEMDdiscretizer(input).runAll(continuousFeaturesIndexes, nChr, 
-        multiVariateFactor, nGeneticEval, nLocalEval, nMultiVariateEval)
+        multiVariateFactor, nGeneticEval, alpha, nLocalEval, nMultiVariateEval)
   }
 }

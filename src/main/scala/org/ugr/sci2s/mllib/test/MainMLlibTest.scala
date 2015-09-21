@@ -104,6 +104,7 @@ object MainMLlibTest {
               val ngeval = MLEU.toInt(params.getOrElse("disc-geval", "5000"), 5000)
               val nleval = MLEU.toInt(params.getOrElse("disc-nleval", "2"), 2)
               val nmeval = MLEU.toInt(params.getOrElse("disc-nmeval", "3"), 3)
+              val alpha = MLEU.toDouble(params.getOrElse("disc-alpha", "0.7"), 0.7)
               
               println("*** Discretization method: ECPSD discretizer")
               println("*** Number of chromosomes: " + nChr)
@@ -116,7 +117,8 @@ object MainMLlibTest {
                   discretizedFeat,
                   nChr,
                   mvfactor,
-                  ngeval, 
+                  ngeval,
+                  alpha.toFloat,
                   nleval,
                   nmeval) // continuous features
               discretizer
