@@ -146,11 +146,11 @@ object MLExperimentUtils {
           val discData = discAlgorithm.transform(train.map(_.features))
             .zip(train.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
-            .persist(StorageLevel.MEMORY_ONLY_SER)
+            .persist(StorageLevel.MEMORY_ONLY)
           val discTestData = discAlgorithm.transform(test.map(_.features))
             .zip(test.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
-            .persist(StorageLevel.MEMORY_ONLY_SER)
+            .persist(StorageLevel.MEMORY_ONLY)
             
           train.unpersist(); test.unpersist();
           
@@ -213,9 +213,9 @@ object MLExperimentUtils {
           
           
           val redTrain = train.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
-            .persist(StorageLevel.MEMORY_ONLY_SER)
+            .persist(StorageLevel.MEMORY_ONLY)
           val redTest = test.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
-            .persist(StorageLevel.MEMORY_ONLY_SER)
+            .persist(StorageLevel.MEMORY_ONLY)
           train.unpersist(); test.unpersist()
           
           // Save reduced data 
@@ -271,10 +271,10 @@ object MLExperimentUtils {
 					val classificationModel = classify(train)
 					val classificationTime = (System.nanoTime() - initStartTime) / 1e9
 					
-					val traValuesAndPreds = computePredictions2(classificationModel, test)
-            .persist(StorageLevel.MEMORY_ONLY_SER)
+					val traValuesAndPreds = computePredictions2(classificationModel, train)
+            .persist(StorageLevel.MEMORY_ONLY)
 					val tstValuesAndPreds = computePredictions2(classificationModel, test)
-            .persist(StorageLevel.MEMORY_ONLY_SER)
+            .persist(StorageLevel.MEMORY_ONLY)
           train.unpersist(); test.unpersist();
 					
           //val c = tstValuesAndPreds.count()
@@ -374,14 +374,15 @@ object MLExperimentUtils {
                 
 				val (trainFile, testFile) = dataFiles(i)
 				val rawtra = readFile(trainFile)
-				val rawtst = readFile(testFile)
+				val testData = readFile(testFile)
 				
-        val nparttr = rawtra.partitions.size; val npartts = rawtst.partitions.size
-        val trainData = if(npart <= nparttr) rawtra.coalesce(npart, false).persist(StorageLevel.MEMORY_ONLY_SER) else 
-          rawtra.repartition(npart).persist(StorageLevel.MEMORY_ONLY_SER)
+        val nparttr = rawtra.partitions.size
+        val trainData = if(npart <= nparttr) rawtra.coalesce(npart, false) else 
+          rawtra.repartition(npart)
+        trainData.persist(StorageLevel.MEMORY_ONLY)
         println("Number of instances in training: " + trainData.count())
         //val tstData = if(npart > npartts) rawtst.coalesce(npart, false) else rawtst.repartition(npart)
-        val testData = rawtst.persist(StorageLevel.MEMORY_ONLY_SER)
+        testData.persist(StorageLevel.MEMORY_ONLY)
         println("Number of instances in test: " + testData.count())
         
 				// Discretization
@@ -476,7 +477,7 @@ object MLExperimentUtils {
           output += "F-Measure (tra/tst):" + trastat.fMeasure + " - " + tststat.fMeasure + "\n"
           output += "Precision (tra/tst):" + trastat.precision + " - " + tststat.precision + "\n"
           output += "Recall(tra/tst):" + trastat.recall + " - " + tststat.recall + "\n"
-          val traauc = (1 + trastat.truePositiveRate(1.0) - trastat.falsePositiveRate(1.0)) / 2
+          val traauc = (1 + trastat.truePositiveRate(1.0) - tststat.falsePositiveRate(1.0)) / 2
           val tstauc = (1 + tststat.truePositiveRate(1.0) - tststat.falsePositiveRate(1.0)) / 2
           output += "AUC (label: 1.0): " + traauc + " - " + tstauc + "\n"             
       }
