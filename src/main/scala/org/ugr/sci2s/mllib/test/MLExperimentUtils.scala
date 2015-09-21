@@ -214,8 +214,10 @@ object MLExperimentUtils {
           
           val redTrain = train.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
             .persist(StorageLevel.MEMORY_ONLY)
+          val c = redTrain.count()
           val redTest = test.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
             .persist(StorageLevel.MEMORY_ONLY)
+          val c2 = redTest.count()
           train.unpersist(); test.unpersist()
           
           // Save reduced data 
@@ -273,8 +275,10 @@ object MLExperimentUtils {
 					
 					val traValuesAndPreds = computePredictions2(classificationModel, train)
             .persist(StorageLevel.MEMORY_ONLY)
+          val c1 = traValuesAndPreds.count()
 					val tstValuesAndPreds = computePredictions2(classificationModel, test)
             .persist(StorageLevel.MEMORY_ONLY)
+          val c2 = tstValuesAndPreds.count()
           train.unpersist(); test.unpersist();
 					
           //val c = tstValuesAndPreds.count()
