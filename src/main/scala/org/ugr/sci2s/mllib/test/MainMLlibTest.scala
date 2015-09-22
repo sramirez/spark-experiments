@@ -100,10 +100,10 @@ object MainMLlibTest {
               val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
               //val discretizedFeat: Option[Seq[Int]] = None   
               val nChr = MLEU.toInt(params.getOrElse("disc-nchrom", "50"), 50)
-              val mvfactor = MLEU.toInt(params.getOrElse("disc-mvfactor", "1"), 1)
               val ngeval = MLEU.toInt(params.getOrElse("disc-geval", "5000"), 5000)
-              val nleval = MLEU.toInt(params.getOrElse("disc-nleval", "2"), 2)
-              val nmeval = MLEU.toInt(params.getOrElse("disc-nmeval", "3"), 3)
+              val mvfactor = MLEU.toInt(params.getOrElse("disc-mvfactor", "1"), 1)
+              val nleval = MLEU.toInt(params.getOrElse("disc-nleval", "1"), 1)
+              val nmeval = MLEU.toInt(params.getOrElse("disc-nmeval", "2"), 2)
               val alpha = MLEU.toDouble(params.getOrElse("disc-alpha", "0.7"), 0.7)
               
               println("*** Discretization method: ECPSD discretizer")
@@ -116,8 +116,8 @@ object MainMLlibTest {
               val discretizer = DEMDdiscretizer.train(train,
                   discretizedFeat,
                   nChr,
-                  mvfactor,
                   ngeval,
+                  mvfactor,
                   alpha.toFloat,
                   nleval,
                   nmeval) // continuous features
