@@ -274,8 +274,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     /** Compute numerical variables to control the number of chunks and chromosome partitions **/
     val nPart = data.partitions.size
     val defChPartSize = nBoundPoints / nPart    
-    // The largest feature (the last one) should not be splitted in several parts
-    val maxChPartSize = math.max(featInfoBySize.last.size, defChPartSize)
+    // The largest feature should not be splitted in several parts
+    val maxChPartSize = math.max(featInfoBySize(0).size, defChPartSize)
     // Compute the factor of multivariety according to the final size
     val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize.toFloat / defChPartSize).toInt)
     val chPartSize = multiVariateFactor * defChPartSize
