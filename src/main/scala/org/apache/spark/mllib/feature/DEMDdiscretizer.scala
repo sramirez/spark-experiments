@@ -308,8 +308,10 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         
         // Start the map partition phase
         val ltotal = 1e7
-        val linstances = ltotal * nPart / boundaryPoints.length / nInstances 
-        val fraction = if(linstances < 1) linstances else 1.0 
+        val linstances = ltotal * nPart / boundaryPoints.length
+        val frac = linstances * nPart / nInstances
+        val fraction = if(frac < 1) frac else 1.0 
+        logInfo(s"Fraction of data used: $fraction")
         val evolvChrom = data.sample(false, fraction, 347217811).mapPartitionsWithIndex({ (index, it) =>  
           
           //if(index < partitionOrder.length) {
