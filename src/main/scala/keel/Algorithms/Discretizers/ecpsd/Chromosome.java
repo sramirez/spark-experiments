@@ -187,7 +187,7 @@ public class Chromosome implements Comparable, Serializable {
     	weka.core.Instances datatrain = new weka.core.Instances(base);
     	int nInputs = dataset[0].length - 1;
     	
-    	// Obtain the number of cut points
+    	// Obtain the cut points for this chromosome
     	ArrayList<Float[]> selected_points = 
     			new ArrayList<Float[]>(cut_points.length);
     	int acc = 0, n_selected_cut_points = 0;
@@ -205,7 +205,7 @@ public class Chromosome implements Comparable, Serializable {
     		acc += cut_points[i].length;
     	}
     	
-	    /*Instances adaptation to WEKA format*/
+	    /*Instance adaptation to the WEKA format*/
 	    int j;
     	for (int i=0; i < dataset.length; i++) {
     		float [] sample = dataset[i];

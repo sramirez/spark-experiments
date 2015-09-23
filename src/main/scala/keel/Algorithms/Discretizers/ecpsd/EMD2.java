@@ -20,7 +20,7 @@ import java.util.Random;
  * @since JDK1.5
  */
 
-public class EMD implements Serializable{
+public class EMD2 implements Serializable{
 	
 	/**
 	 * 
@@ -52,16 +52,21 @@ public class EMD implements Serializable{
 
 	private float prob1to0Rec;
 	private float prob1to0Div;  
+	
+	private float pEvaluationsForReduction; 
+	private float pReduction;
+
 	private int n_restart_not_improving;
+	private static int PROPER_SIZE_CHROMOSOME = 1000;
     
     /**
      * Creates a CHC object with its parameters
      * 
      * @param pop	Population of rules we want to select
      */
-    public EMD (long seed, float[][] dataset, float [][] cut_points, int eval, int popLength, 
+    public EMD2 (long seed, float[][] dataset, float [][] cut_points, int eval, int popLength, 
     		float restart_per, float alpha_fitness, float beta_fitness, float pr0to1Rec, 
-    		float pr0to1Div, int nClasses, boolean[] initial_chr) {
+    		float pr0to1Div, float pEvaluationsForReduction, float pReduction, int nClasses, boolean[] initial_chr) {
     	
     	this.seed = seed;
     	this.dataset = dataset;
@@ -73,7 +78,9 @@ public class EMD implements Serializable{
     	alpha = alpha_fitness;
     	beta = beta_fitness;
     	prob1to0Rec = pr0to1Rec;
-    	prob1to0Div = pr0to1Div;
+    	prob1to0Div = pr0to1Div; 
+    	this.pEvaluationsForReduction = pEvaluationsForReduction;
+    	this.pReduction = pReduction;
     	this.nClasses = nClasses;
     	
     	max_cut_points = 0;
@@ -102,14 +109,14 @@ public class EMD implements Serializable{
     	
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses) {    	
+    public EMD2 (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses) {    	
     	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, .7f, .3f, .25f, .05f, nClasses, null);
+    			50, .8f, .7f, .3f, .25f, .05f, .1f, .5f, nClasses, null);
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, float alpha, int nEval, int nClasses) {
+    public EMD2 (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, float alpha, int nEval, int nClasses) {
     	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, alpha, 1-alpha, .25f, .05f, nClasses, initial_chr);
+    			50, .8f, alpha, 1-alpha, .25f, .05f, .1f, .5f, nClasses, initial_chr);
     }
     
     private weka.core.Instances computeBaseTrain() {
@@ -161,27 +168,95 @@ public class EMD implements Serializable{
     	boolean pop_changes;
     	
     	n_eval = 0;
+    	int n_reduction = 0;
     	int n_restart = 0;
     	threshold = (float) n_cut_points / 4.f;
     	n_restart_not_improving = 0;
+    	int next_reduction = 1;
+    	boolean reduction = true;
+
+    	int[] cut_points_log = new int[n_cut_points];
     	
+    	//initPopulation(initials_chrom);
     	initPopulation();
+
+        //long t_ini = System.currentTimeMillis();
+		//System.out.println("Inicio de Evaluación inicial!!!!!");
 		evalPopulation();
-		
+		//System.out.println("Fin de Evaluación!!!!!");
+    	/*long t_fin = System.currentTimeMillis();
+        long t_exec = t_fin - t_ini;
+        long hours = t_exec / 3600000;
+        long rest = t_exec % 3600000;
+        long minutes = rest / 60000;
+        rest %= 60000;
+        long seconds = rest / 1000;
+        rest %= 1000;
+        System.out.println("Execution Time: " + hours + ":" + minutes + ":" +
+                           seconds + "." + rest);   */
     	do {
+    		
+    		// Reduction?
+    		/*reduction = (n_cut_points * (1 - pReduction) > PROPER_SIZE_CHROMOSOME) &&
+    				(n_eval / (max_eval * pEvaluationsForReduction) > next_reduction);*/
+    		reduction = false;
+    		if (reduction) {
+    			// We reduce the population, and it is not evaluated this time
+    			reduction(cut_points_log, ((Chromosome)population.get(0)).getIndividual());    	    	
+    			cut_points_log = new int[n_cut_points];
+    			next_reduction++;
+
+    			// Next time we do a restart 
+    			// (population do not need be evaluated, best chrom is keeped equal)
+    			restartPopulation();
+    			//restartPopulation();
+    			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
+    	    	best_fitness = 100.0f;
+
+    			//System.out.println("Inicio de Evaluación por reduccion!!!!!");
+    			evalPopulation();
+    			//System.out.println("Fin de Evaluación!!!!!");
+    			n_reduction++;
+    			if(n_cut_points * (1 - pReduction) <= PROPER_SIZE_CHROMOSOME) {
+    				System.out.println("No more reductions!");
+    			}
+    		}
     		
     		// Select for crossover
     		C_population = randomSelection();
     		// Cross selected individuals
     		Cr_population = recombine (C_population);
     		// Evaluate new population
+    		//t_ini = System.currentTimeMillis();
+    		 //System.out.println("Inicio de Evaluación CROSSOVER!!!!!");
     		 evaluate (Cr_population);
+    		 /*System.out.println("Fin de Evaluación!!!!!");
+    		 t_fin = System.currentTimeMillis();
+    	     t_exec = t_fin - t_ini;
+    	     hours = t_exec / 3600000;
+    	     rest = t_exec % 3600000;
+    	     minutes = rest / 60000;
+    	     rest %= 60000;
+    	     seconds = rest / 1000;
+    	     rest %= 1000;
+    	     System.out.println("Execution Time: " + hours + ":" + minutes + ":" +
+    	    		 seconds + "." + rest);*/
     		
     		// Select individuals for new population
     		pop_changes = selectNewPopulation (Cr_population);
     		
+    		// Maintain a historical of the most selected cut points after selecting new populations
+    		if (reduction) {
+	    		for(int i=0; i < n_cut_points; i++) {
+	    			if(population.get(0).getIndividual()[i]) 
+	    				cut_points_log[i]++;
+	    		}
+    		}
+    		
     		// Check if we have improved or not
-    		if (!pop_changes) threshold--;
+    		if (!pop_changes) {
+    			threshold--;
+    		}
     		
     		// If we do not improve our current population for several trials, then we should restart the population
     		if (threshold < 0) {
@@ -196,13 +271,26 @@ public class EMD implements Serializable{
     			//System.out.println("Fin de Evaluación!!!!!");
     			n_restart++;
     		}
+    		
+    		//System.out.println("N. eval: " + n_eval);
+    		//System.out.println("Tam cromosoma: " + population.get(0).getIndividual().length);   
+        	//CHC_Chromosome best = population.get(0);
+        	//System.out.println("Threshold: " + threshold);
+        	//System.out.println("Best Fitness: "  + best.fitness);
+    		//System.out.println();
     	} while ((n_eval < max_eval) && (n_restart_not_improving < 5));
 
     	// The evaluations have finished now, so we select the individual with best fitness
     	Collections.sort(population);
     	Chromosome best = population.get(0);
+    	//System.out.println("Best Chr.: " + best.toString());
+    	//System.out.println("Best Fitness: "  + best.fitness);
+    	//System.out.println("Number of selected cutpoints/max points: " 
+    	//		+ best.n_cutpoints + "/" + max_cut_points);
+    	//System.out.println("Error in train: " + best.perc_err);
     	
-    	this.best = best;
+    	this.best = best;    	
+    	//return new Result(best.getIndividual(), cut_points);
     }
     
     public float getBestFitness(){
@@ -211,7 +299,137 @@ public class EMD implements Serializable{
     
     public boolean[] getBestIndividual(){
     	return best.getIndividual();
+    	/*if(max_cut_points == best.getIndividual().length) 
+    		return best.getIndividual();
+    	
+		boolean[] result = new boolean[max_cut_points];
+		boolean[] bred = best.getIndividual();
+		for(int i = 0, acc = 0, oacc = 0; i<cut_points.length; i++){
+			if(cut_points[i] != null) {
+				for(int j = 0, pind = 0; j<cut_points[i].length;j++) {
+    				if(bred[acc + j]) { // The point's been chosen
+    					float[] oatt = original_cut_points[i];
+						// Search the correspondent index
+    					boolean found = false;
+						while(pind < oatt.length && !found){
+    						if(oatt[pind] == cut_points[i][j]) found = true;
+    						pind++;
+    					}
+						if(found) result[oacc + pind - 1] = true;        					
+    				}
+    			}
+				acc += cut_points[i].length;
+				oacc += original_cut_points[i].length;
+			}
+		}
+		return result;*/
     }
+    
+    private void reduction(int[] cut_points_log, boolean[] best_chr){
+
+    	ArrayList<RankingPoint> candidatePoints = new ArrayList<RankingPoint>(cut_points_log.length);
+    	List<RankingPoint> newPoints = new ArrayList<RankingPoint>(cut_points_log.length);
+		int reduced_size = (int) ((1 - pReduction) * cut_points_log.length);
+    	
+		// Maintain the best chromosome's points and the rest ones are used to form a ranking
+    	for(int i = 0; i < cut_points_log.length; i++){
+    		RankingPoint point = new RankingPoint(i, cut_points_log[i]);
+    		if(best_chr[i])
+    			newPoints.add(point);
+    		else
+    			candidatePoints.add(point);
+    	}
+		
+    	// Select the best ranked points to complete the reduced chromosome
+		int rest_size = reduced_size - newPoints.size();
+		if(rest_size > 0) { 
+			
+			if(candidatePoints.size() > rest_size) {
+				// Order the points by ranking (descending)
+				Collections.sort(candidatePoints, new ComparePointsByRank());
+				int pivot = rest_size - 1;
+				int last_rank = candidatePoints.get(pivot).getRank();
+				
+				if (last_rank != candidatePoints.get(pivot + 1).getRank()) {
+					// We add all best ranked candidates until completing the reduced chrom
+					newPoints.addAll(candidatePoints.subList(0, rest_size));	
+				} else {
+					// We have to select the last ranked randomly
+					int first_pos = 0;
+					for(int i = pivot; i >= 0; i--) {
+						if(last_rank != candidatePoints.get(i).getRank()){
+							first_pos = i + 1;
+							break;
+						}
+					}
+					
+					int last_pos = candidatePoints.size();
+					for(int i = pivot; i < candidatePoints.size(); i++) {
+						if(last_rank != candidatePoints.get(i).getRank()){
+							last_pos = i;
+							break;
+						}
+					}
+					
+					List<RankingPoint> lastRanked = candidatePoints.subList(first_pos, last_pos);
+					Random r = new Random(seed);
+					
+					// We remove the last ranked elements until we achieve the size
+					while(lastRanked.size() + first_pos > rest_size)
+						lastRanked.remove(r.nextInt(lastRanked.size()));
+					
+					newPoints.addAll(candidatePoints.subList(0, first_pos));
+					newPoints.addAll(lastRanked);
+				}
+			} else {
+				// All candidate points fit in the new chromosome
+				newPoints.addAll(candidatePoints);	
+			}
+			
+		} else {
+			System.out.println("Limit of reduction already reached");
+		}
+		
+    	// Order the points by position (id)
+    	Collections.sort(newPoints, new ComparePointsByID());
+    	
+    	// Reduce the actual matrix of cut points using the most selected points' positions
+    	int index_points = 0;
+    	int index_att = 0;
+    	float[][] new_matrix = new float[cut_points.length][];
+		for(int i = 0; (i < cut_points.length) && (index_points < newPoints.size()); i++) {
+			if(cut_points[i] != null) {
+				List<Float> lp = new ArrayList<Float>();
+				while(newPoints.get(index_points).id < index_att + cut_points[i].length){
+					lp.add(cut_points[i][newPoints.get(index_points).id - index_att]);
+					if(++index_points >= newPoints.size()){ break; }
+				}
+
+				new_matrix[i] = new float[lp.size()];
+				for(int j = 0; j < lp.size(); j++) {
+					new_matrix[i][j] = lp.get(j);
+				}
+
+				index_att += cut_points[i].length;
+			}				
+		}
+		cut_points = new_matrix;
+		
+		// Reduce the size of the chromosomes according to the number of points
+		n_cut_points = newPoints.size();
+		
+		for(int i = 0; i < population.size(); i++) {
+			boolean[] old_chr = population.get(i).getIndividual();
+			boolean[] new_chr = new boolean[n_cut_points];
+			for(int j = 0; j < newPoints.size(); j++){
+				new_chr[j] = old_chr[newPoints.get(j).id];
+			}
+			population.set(i, new Chromosome(new_chr));
+		}   	
+    	
+    	//evalPopulation();
+    }
+    
     
     /**
      * Creates several population individuals randomly. The first individual has all its values set to true
@@ -424,6 +642,14 @@ public class EMD implements Serializable{
     	}
     	
     	population = new_pop;
+    }
+    
+    private boolean isAscendingSorted(float[] v) {
+        boolean sorted = true;        
+        for (int i = 1; i < v.length; i++) {
+            if (v[i-1] > v[i]) return false;
+        }
+        return sorted;
     }
     
     class ComparePointsByID implements Comparator<RankingPoint> {
