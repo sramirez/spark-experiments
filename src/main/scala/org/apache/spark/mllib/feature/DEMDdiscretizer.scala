@@ -223,8 +223,9 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       userFactor: Int,
       nGeneticEval: Int,
       alpha: Float,
-      nLocalEval: Int,
-      nMultiVariateEval: Int) = {
+      nMultiVariateEval: Int,
+      samplingRate: Float,
+      votingThreshold: Float) = {
     
     if (data.getStorageLevel == StorageLevel.NONE) {
       logWarning("The input data is not directly cached, which may hurt performance if its"
@@ -302,7 +303,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
 
     //val comb = 0
     for(comb <- 0 until nMultiVariateEval) {
-      for(nleval <- 0 until nLocalEval) {
+      //for(nleval <- 0 until nLocalEval) {
           // Defined the correspondence between the partitions and the chromosome partitions
         val partitionOrder = Random.shuffle((0 until nChPart).toVector)
         
@@ -312,7 +313,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         val frac = linstances * nPart / nInstances
         val fraction = if(frac < 1) frac else 1.0 
         logInfo(s"Fraction of data used: $fraction")
-        val evolvChrom = data.sample(false, fraction, 347217811).mapPartitionsWithIndex({ (index, it) =>  
+        val evolvChrom = data.sample(false, samplingRate, 347217811).mapPartitionsWithIndex({ (index, it) =>  
           
           //if(index < partitionOrder.length) {
           val chID = partitionOrder(index % nChPart)
@@ -355,7 +356,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
           /*} else {
             Iterator.empty 
           }*/
-        }).mapValues({ case (a, f) => 
+        }).mapValues({ case (a, _) => 
             val ca = new Array[Int](a.length)
             (0 until a.length).map(i => ca(i) = if(a(i)) 1 else 0)
             (ca, 1)
@@ -363,7 +364,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
             ((a1, a2).zipped.map(_ + _), c1 + c2)
           }).mapValues({ case (a, c) => 
             val ba =  new Array[Boolean](a.length) 
-            val threshold = c / 4
+            val threshold = c * votingThreshold
             (0 until a.length).map(i => ba(i) = if(a(i) >= threshold) true else false)
             ba
           })
@@ -379,7 +380,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         
         // Send a new broadcasted copy of the big chromosome
         bBigChromosome = updateBigChromosome(bigChromosome) // Important to avoid task serialization problem
-      }      
+      //}      
     }
     
     // Update the full list features with the thresholds calculated
@@ -415,11 +416,12 @@ object DEMDdiscretizer {
       continuousFeaturesIndexes: Option[Seq[Int]] = None,
       nChr: Int = 50,
       nGeneticEval: Int = 5000,
-      multiVariateFactor: Int = 1,
       alpha: Float = .7f,
-      nLocalEval: Int = 2,
-      nMultiVariateEval: Int = 2) = {
+      multiVariateFactor: Int = 1,
+      nMultiVariateEval: Int = 2,
+      samplingRate: Float = .1f,
+      votingThreshold: Float = .25f) = {
     new DEMDdiscretizer(input).runAll(continuousFeaturesIndexes, nChr, 
-        multiVariateFactor, nGeneticEval, alpha, nLocalEval, nMultiVariateEval)
+        multiVariateFactor, nGeneticEval, alpha, nMultiVariateEval, samplingRate, votingThreshold)
   }
 }
