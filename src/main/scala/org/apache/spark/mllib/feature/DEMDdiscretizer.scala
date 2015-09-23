@@ -374,7 +374,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         val result = evolvChrom.collect()
         //println(s"Result for local: $nleval, multiVar: $comb - " + result.sortBy(_._1).mkString("\n"))
         for ((chID, (arr, psel)) <- result) {
-          println(s"psel % points selected in the chromosome $chID")
+          println(s"$psel % points selected in the chromosome $chID")
           for(feat <- bChromChunks.value(comb)(chID))
             arr.copyToArray(bigChromosome, feat.init)
         }
