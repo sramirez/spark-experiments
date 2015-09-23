@@ -365,15 +365,16 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
           }).mapValues({ case (a, c) => 
             val ba =  new Array[Boolean](a.length) 
             val threshold = c * votingThreshold
-            (0 until a.length).map(i => ba(i) = if(a(i) >= threshold) true else false)
-            ba
-          })
-        
+            var nsel = 0
+            (0 until a.length).map(i => ba(i) = if(a(i) >= threshold) {nsel = nsel + 1; true} else false )
+            (ba, nsel / a.length.toFloat)
+          })        
   
         // Copy the partial results to the big chromosome
         val result = evolvChrom.collect()
         //println(s"Result for local: $nleval, multiVar: $comb - " + result.sortBy(_._1).mkString("\n"))
-        for ((chID, arr) <- result) {
+        for ((chID, (arr, psel)) <- result) {
+          println(s"psel % points selected in the chromosome $chID")
           for(feat <- bChromChunks.value(comb)(chID))
             arr.copyToArray(bigChromosome, feat.init)
         }
