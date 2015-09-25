@@ -181,8 +181,7 @@ public class Chromosome implements Comparable, Serializable {
      * @param alpha	Coefficient for the number of cut points importance
      * @param beta	Coefficient for the number of inconsistencies importance
      */
-    public void evaluate (weka.core.Instances base, float[][] dataset, float [][] cut_points, 
-    		int initial_cut_points, float alpha, float beta) {
+    public EvalPoint evaluate (weka.core.Instances base, float[][] dataset, float [][] cut_points) {
     	
     	weka.core.Instances datatrain = new weka.core.Instances(base);
     	int nInputs = dataset[0].length - 1;
@@ -190,7 +189,7 @@ public class Chromosome implements Comparable, Serializable {
     	// Obtain the cut points for this chromosome
     	ArrayList<Float[]> selected_points = 
     			new ArrayList<Float[]>(cut_points.length);
-    	int acc = 0, n_selected_cut_points = 0;
+    	int acc = 0, n_selected_cut_points = 0, total_cut_points = 0;
     	
     	for (int i=0; i < cut_points.length; i++) {
     		ArrayList<Float> arr = new ArrayList<Float>();
@@ -199,6 +198,7 @@ public class Chromosome implements Comparable, Serializable {
     				arr.add(cut_points[i][j]);
     				n_selected_cut_points++;
     			} 
+    			total_cut_points++;
 			}
     		Float[] aux = new Float[arr.size()];
     		selected_points.add(arr.toArray(aux));
@@ -279,15 +279,18 @@ public class Chromosome implements Comparable, Serializable {
         rest %= 1000;
         System.out.println("Wrapper execution Time: " + hours + ":" + minutes + ":" +
                 seconds + "." + rest);   */
-	    float p_err = (float) nber / datatrain.numInstances();
-	    //float proportion = (double) (dataset.getnData() * 2) / (double) initial_cut_points;
-	    float perc_points= (float) n_selected_cut_points / initial_cut_points;
-        /* fitness = alpha * ((double) n_selected_cut_points / (double) initial_cut_points) 
-        		+ beta * proportion * ((double) incons / (double) dataset.getnData()) ;*/
-    	fitness = alpha * perc_points + beta * p_err;
-        n_cutpoints = n_selected_cut_points;
-        perc_err = p_err;
-        //System.out.println(fitness);
+	    //float p_err = (float) nber / datatrain.numInstances();
+	    //float perc_points= (float) n_selected_cut_points / total_cut_points;
+        //float fitness = alpha * perc_points + (1-alpha) * p_err;
+        //n_cutpoints = n_selected_cut_points;
+        //perc_err = p_err;
+	    return new EvalPoint(nber, dataset.length);        
+    }
+    
+    public void setFitness(EvalPoint ep, int nsel, int ntotal, float alpha){
+        fitness = alpha * ((float) nsel / ntotal) + (1-alpha) * ((float )ep.n_err / ep.ninst);
+        n_cutpoints = nsel;
+        perc_err = (float) ep.n_err / ep.ninst;
     }
     
     /**

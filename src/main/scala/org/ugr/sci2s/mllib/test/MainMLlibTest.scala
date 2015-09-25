@@ -109,7 +109,7 @@ object MainMLlibTest {
               val vth = MLEU.toDouble(params.getOrElse("disc-vth", "0.25"), 0.25).toFloat
               
               
-              println("*** Discretization method: ECPSD discretizer")
+              println("*** Discretization method: Distributed Evolutionary Multivariate Discretizer")
               println("*** Number of chromosomes: " + nChr)
               println("*** Multivariate Factor: " + mvfactor)
               println("*** Number of genetic evaluations: " + ngeval)

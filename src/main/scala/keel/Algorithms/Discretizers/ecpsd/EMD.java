@@ -27,45 +27,41 @@ public class EMD implements Serializable{
 	 */
 	private static final long serialVersionUID = 7575712219028489742L;
 	private long seed;
-	private float[][] cut_points;
-	//private float[][] original_cut_points;
-	private float[][] dataset;
 	private Chromosome initial_chr;
 	private Chromosome best;
+	private float[][] cut_points;
 	
-	private ArrayList <Chromosome> population;
+	public ArrayList <Chromosome> population;
 	
-	private int max_cut_points;
+	//private int max_cut_points;
 	private int n_cut_points;
-	
-	private int max_eval;
-	private int n_eval;
 	
 	private int pop_length;
 	private int nClasses;
 	private weka.core.Instances baseTrain;
 	
-	private float threshold;
 	private float r;
 	private float alpha, beta;
 	private float best_fitness;
-
 	private float prob1to0Rec;
 	private float prob1to0Div;  
+	
+	/* Execution parameters */
+	private float threshold;
+	private int n_eval;
 	private int n_restart_not_improving;
+	private int max_eval;
     
     /**
      * Creates a CHC object with its parameters
      * 
      * @param pop	Population of rules we want to select
      */
-    public EMD (long seed, float[][] dataset, float [][] cut_points, int eval, int popLength, 
-    		float restart_per, float alpha_fitness, float beta_fitness, float pr0to1Rec, 
+    public EMD (long seed, float[][] cut_points, int eval, int popLength, float restart_per, 
+    		float alpha_fitness, float beta_fitness, float pr0to1Rec, 
     		float pr0to1Div, int nClasses, boolean[] initial_chr) {
     	
     	this.seed = seed;
-    	this.dataset = dataset;
-    	this.cut_points = cut_points;
     	//this.original_cut_points = cut_points.clone();
     	max_eval = eval;
     	pop_length = popLength;
@@ -75,45 +71,45 @@ public class EMD implements Serializable{
     	prob1to0Rec = pr0to1Rec;
     	prob1to0Div = pr0to1Div;
     	this.nClasses = nClasses;
+    	this.cut_points = cut_points;   	
     	
-    	max_cut_points = 0;
+    	n_cut_points = 0;
     	for (int i=0; i< cut_points.length; i++) {
     		if (cut_points[i] != null) {
     			//if(!isAscendingSorted(cut_points[i]))
     			//		throw new ExceptionInInitializerError("Cut points must be sorted");
-    			max_cut_points += cut_points[i].length;
+    			n_cut_points += cut_points[i].length;
     		}
     			
     	}
-    	n_cut_points = max_cut_points;
     	
     	population = new ArrayList <Chromosome> (pop_length);
     	best_fitness = 100f;
     	if(initial_chr == null) {
     		this.initial_chr = new Chromosome (n_cut_points, true);
     	} else {
-    		if(initial_chr.length == max_cut_points)
+    		if(initial_chr.length == n_cut_points)
         		this.initial_chr = new Chromosome (initial_chr);
         	else 
         		this.initial_chr = new Chromosome (n_cut_points, true);
     	}
     	
     	this.baseTrain = computeBaseTrain();
+    	this.n_eval = 0;
+    	this.threshold = (float) n_cut_points / 4.f;
+    	this.n_restart_not_improving = 0;
     	
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses) {    	
-    	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, .7f, .3f, .25f, .05f, nClasses, null);
+    public EMD (float[][] cut_points, int chLength, int nEval, int nClasses) {    	
+    	this(964534618L, cut_points, nEval, 50, .8f, .7f, .3f, .25f, .05f, nClasses, null);
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, float alpha, int nEval, int nClasses) {
-    	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, alpha, 1-alpha, .25f, .05f, nClasses, initial_chr);
+    public EMD (float[][] cut_points, boolean[] initial_chr, float alpha, int nEval, int nClasses) {
+    	this(964534618L, cut_points, nEval, 50, .8f, alpha, 1-alpha, .25f, .05f, nClasses, initial_chr);
     }
     
     private weka.core.Instances computeBaseTrain() {
-    	int nInputs = dataset[0].length - 1;
     	/* WEKA data set initialization
     	 * Second and Third type of evaluator in precision: WEKA classifier
     	 * */    	
@@ -122,7 +118,7 @@ public class EMD implements Serializable{
 	    //weka.core.Instance instances[] = new weka.core.Instance[discretized_data.length];
 	    
 	    /*Attribute adaptation to WEKA format*/
-	    for (int i=0; i< nInputs; i++) {
+	    for (int i=0; i< cut_points.length; i++) {
 	    	List<String> att_values = new ArrayList<String>();
     		if(cut_points[i] != null) {
 	    		for (int j=0; j < cut_points[i].length + 1; j++)
@@ -141,7 +137,7 @@ public class EMD implements Serializable{
 	    for (int i=0; i<nClasses; i++) {
 	    	att_values.add(new String(Integer.toString(i)));
 	    }
-	    attributes.add(new weka.core.Attribute("Class", att_values, nInputs));
+	    attributes.add(new weka.core.Attribute("Class", att_values, cut_points.length));
 
     	/*WEKA data set construction*/
 	    weka.core.Instances baseTrain = new weka.core.Instances(
@@ -155,15 +151,10 @@ public class EMD implements Serializable{
      * 
      * @return	boolean array with the rules selected for the final population
      */
-    public void runAlgorithm() {
+    /*public void runAlgorithm() {
     	ArrayList <Chromosome> C_population;
     	ArrayList <Chromosome> Cr_population;
     	boolean pop_changes;
-    	
-    	n_eval = 0;
-    	int n_restart = 0;
-    	threshold = (float) n_cut_points / 4.f;
-    	n_restart_not_improving = 0;
     	
     	initPopulation();
 		evalPopulation();
@@ -185,16 +176,11 @@ public class EMD implements Serializable{
     		
     		// If we do not improve our current population for several trials, then we should restart the population
     		if (threshold < 0) {
-    			//System.out.println("Restart!!");
     			restartPopulation();
     			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
     	    	best_fitness = 100.f;
     			n_restart_not_improving++;
-
-    			//System.out.println("Inicio de Evaluación por threshold!!!!!");
     			evalPopulation();
-    			//System.out.println("Fin de Evaluación!!!!!");
-    			n_restart++;
     		}
     	} while ((n_eval < max_eval) && (n_restart_not_improving < 5));
 
@@ -203,7 +189,39 @@ public class EMD implements Serializable{
     	Chromosome best = population.get(0);
     	
     	this.best = best;
+    }*/
+    
+    public ArrayList<Chromosome> crossover() {
+    	// Select for crossover
+    	ArrayList<Chromosome> C_population = randomSelection();
+		// Cross selected individuals
+		return recombine (C_population);
     }
+    
+    public boolean newPopulation(ArrayList<Chromosome> newPop) {
+    	// Select individuals for new population
+		boolean pop_changes = selectNewPopulation (newPop);
+		// Check if we have improved or not
+		if (!pop_changes) threshold--;
+		
+		// If we do not improve our current population for several trials, then we should restart the population
+		if (threshold < 0) {
+			restartPopulation();
+			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
+	    	best_fitness = 100.f;
+			n_restart_not_improving++;
+			return true; // Need an extra evaluation!
+		}
+		return false;
+    }
+    
+    public boolean isFinished() {
+    	return (n_eval < max_eval) && (n_restart_not_improving < 5);
+    }
+    
+    public ArrayList<Chromosome> getPopulation() {
+		return population;
+	}
     
     public float getBestFitness(){
     	return this.best.getFitness();
@@ -216,7 +234,7 @@ public class EMD implements Serializable{
     /**
      * Creates several population individuals randomly. The first individual has all its values set to true
      */
-    private void initPopulation () {
+    public void initPopulation () {
     	population.add(initial_chr);    	
     	for (int i=1; i<pop_length; i++)
     		population.add(new Chromosome(n_cut_points));
@@ -225,21 +243,31 @@ public class EMD implements Serializable{
     /**
      * Evaluates the population individuals. If a chromosome was previously evaluated we do not evaluate it again
      */
-    private void evalPopulation () {
+    public EvalPoint[] evalPopulation (ArrayList<Chromosome> pop, float[][] dataset) {
     	
-        for (int i = 0; i < pop_length; i++) {
-            if (population.get(i).not_eval()) {
-                //program.execute(args[0]);
-            	population.get(i).evaluate(this.baseTrain, dataset, cut_points, max_cut_points, alpha, beta);
-            	//population.get(i).evaluate(dataset, cut_points, max_cut_points, alpha, beta);
+    	EvalPoint[] result = new EvalPoint[pop.size()];
+        for (int i = 0; i < pop.size(); i++) {
+            if (pop.get(i).not_eval()) {
+            	result[i] = pop.get(i).evaluate(this.baseTrain, dataset, cut_points);
             	n_eval++;
             }
-        	
-        	float ind_fitness = population.get(i).getFitness();
+        }
+        return result;
+    }
+    
+    public void setFitness(EvalPoint[] fitnesses) {    	
+    	for (int i = 0; i < population.size(); i++) {
+    		boolean[] ind = population.get(i).getIndividual();
+    		int nsel = 0;
+    		for (int j = 0; j < ind.length; j++) {
+				if(ind[j]) nsel++;
+			}
+    		population.get(i).setFitness(fitnesses[i], nsel, n_cut_points, alpha);
+    		float ind_fitness = population.get(i).getFitness();
         	if (ind_fitness < best_fitness) {
         		best_fitness = ind_fitness;            		
         	}
-        }
+    	}
     }
     
     /**
@@ -315,14 +343,14 @@ public class EMD implements Serializable{
      * 
      * @param pop	Population of individuals we want to evaluate
      */
-    private void evaluate (ArrayList <Chromosome> pop) {
+    /*private void evaluate (ArrayList <Chromosome> pop) {
     	for (int i = 0; i < pop.size(); i++) {
             if (pop.get(i).not_eval()) {
             	pop.get(i).evaluate(baseTrain, dataset, cut_points, max_cut_points, alpha, beta);
             	n_eval++;
             }
         }
-    }
+    }*/
     
     /**
      * Replaces the current population with the best individuals of the given population and the current population
