@@ -206,7 +206,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
   }
   
   private def evaluateChromosomes(
-      chromChunks: Broadcast[Array[Array[List[Feature]]]], 
+      chunks: Array[List[Feature]],
       samplingRate: Float,
       nChPartitions: Int, 
       EMDalgorithms: Array[EMD]) = {
@@ -214,31 +214,32 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val partitionOrder = Random.shuffle((0 until nChPartitions).toVector).toArray
     
     data.sample(false, samplingRate, 347217811).mapPartitionsWithIndex({ (index, it) =>  
-        val chID = partitionOrder(index)
-        val chunk = chromChunks.value(0)(chID)
-        val sumsize = chunk.map(_.size).sum
-      
-        // Create a data matrix for each partition
-        val datapart = it.toArray.map({ lp =>
-          var sample = new Array[Float](chunk.length + 1)
-          (0 until chunk.length).map({i => sample(i) = lp.features(chunk(i).id).toFloat})
-          sample(chunk.length) = lp.label.toFloat // class
-          sample
-        })
-         
-        val i = partitionOrder(index % nChPartitions)
+        val chID = partitionOrder(index % nChPartitions)
         val emd = EMDalgorithms(chID)
-        val listEval = emd.evalPopulation(emd.getPopulation, datapart)
+        if(emd.needsToEval()) {
+          val chunk = chunks(chID)
+          val sumsize = chunk.map(_.size).sum
         
-        Array((chID, listEval)).toIterator
-        
+          // Create a data matrix for each partition
+          val datapart = it.toArray.map({ lp =>
+            var sample = new Array[Float](chunk.length + 1)
+            (0 until chunk.length).map({i => sample(i) = lp.features(chunk(i).id).toFloat})
+            sample(chunk.length) = lp.label.toFloat // class
+            sample
+          })          
+          
+          val listEval = emd.evalPopulation(datapart)          
+          Array((chID, listEval)).toIterator          
+        } else {
+          Iterator.empty
+        }        
       }).reduceByKey({ case (ep1, ep2) =>
         (ep1, ep2).zipped.map({case (e1, e2) => e1.add(e2)})
         ep1
     })
   }
   
-  private def updateBigChromosome(newch: Array[Boolean]) = data.context.broadcast(newch)
+  private def updateBroadcast(newch: Array[Array[Boolean]]) = data.context.broadcast(newch)
  
   /**
    * Run the distributed ECSPD discretizer on input data.
@@ -290,6 +291,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val chromoMatrix = new Array[Array[Boolean]](nFeatures)
     val boundaryMatrix = boundaryPairs.mapValues(_.toArray.sorted).collect()
     for((i, a) <- boundaryMatrix) { pointsMatrix(i) = a; chromoMatrix(i) = Array.fill[Boolean](a.size)(true)}
+    var bChromoMatrix = sc.broadcast(chromoMatrix)
       
     // Order the boundary points by size and by id to yield the vector of features
     /*val nBoundPoints = boundaryPairs.count().toInt
@@ -334,151 +336,78 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     
     /** Divide the chromosome into chunks of features, using different combinations (multivar. eval.) **/
     val chromChunks = divideChromosome(featInfoBySize, nMultiVariateEval, nChPart)
-    val bChromChunks = sc.broadcast(chromChunks)
-    //val nChunks = bChromChunks.value.length
-    val firstChunk = bChromChunks.value(0)
-
+    
+    val firstChunk = chromChunks(0)
     println("first chromChunks: " + firstChunk.map(_.map(_.id)).mkString(","))
     println("Size by chunk: " + firstChunk.map(_.size).mkString(","))
     println("Sum by chunk: " + firstChunk.map(_.map(_.size).sum).mkString(","))
     
-    val EMDalgorithms = new Array[EMD](chromChunks.length)
-    val baseTrains = new Array[weka.core.Instances](chromChunks.length)
-    val comb = 0
-    (0 until chromChunks.length).map { chID =>
-      val chunk = bChromChunks.value(comb)(chID)
-      val sumsize = chunk.map(_.size).sum
-      val initialChr = new Array[Boolean](sumsize)
-      val subset = chunk.map(_.id).map(pointsMatrix).toArray
-      EMDalgorithms(chID) = new EMD(subset, initialChr, alpha, nGeneticEval, classDistrib.size)
-    }    
-    
-    do{
-      
-      (0 until EMDalgorithms.length).map{ chID =>
-        EMDalgorithms(chID).initPopulation()        
-      }
-           
-      var evalPointsByChunk = evaluateChromosomes(bChromChunks, samplingRate, nChPart, EMDalgorithms)       
-      for((i, eps) <- evalPointsByChunk) {
-         EMDalgorithms(i).setFitness(eps)
-      }      
-      
-      val newPopulations = (0 until EMDalgorithms.length).map{ chID =>
-        EMDalgorithms(chID).crossover()             
-      }
-      
-      evalPointsByChunk = evaluateChromosomes(bChromChunks, samplingRate, nChPart, EMDalgorithms)      
-      for((i, eps) <- evalPointsByChunk) {
-         EMDalgorithms(i).setFitness(eps)
-      }
-      
-      val needsEval = (0 until EMDalgorithms.length).map{ chID =>
-        EMDalgorithms(chID).newPopulation(newPopulations(chID))             
-      }      
-      
-      evalPointsByChunk = evaluateChromosomes(bChromChunks, samplingRate, nChPart, EMDalgorithms)      
-      for((i, eps) <- evalPointsByChunk) {
-         EMDalgorithms(i).setFitness(eps)
-      }
-      
-      
-      
-      
-    }while(EMDalgorithms.filter(_.isFinished).length > 0)
-    
-
-    //val comb = 0
     for(comb <- 0 until nMultiVariateEval) {
-      //for(nleval <- 0 until nLocalEval) {
-          // Defined the correspondence between the partitions and the chromosome partitions
-        val partitionOrder = Random.shuffle((0 until nChPart).toVector)
-        
-        // Start the map partition phase
-        /*val ltotal = 1e7
-        val linstances = ltotal * nPart / boundaryMatrix.length
-        val frac = linstances * nPart / nInstances
-        val fraction = if(frac < 1) frac else 1.0
-        logInfo(s"Fraction of data used: $fraction") */
-        val evolvChrom = data.sample(false, samplingRate, 347217811).mapPartitionsWithIndex({ (index, it) =>  
-          
-          //if(index < partitionOrder.length) {
-          val chID = partitionOrder(index % nChPart)
-          //  val chID = partitionOrder(index)
-          val chunk = bChromChunks.value(comb)(chID)
-          val sumsize = chunk.map(_.size).sum
-          
-          // Create a data matrix for each partition
-          val datapart = it.toArray.map({ lp =>
-            var sample = new Array[Float](chunk.length + 1)
-            (0 until chunk.length).map({i => sample(i) = lp.features(chunk(i).id).toFloat})
-            sample(chunk.length) = lp.label.toFloat // class
-            sample
-          })
-          
-          if(datapart.length > 0) {
-            // Compute the single chromosome and the seq of cut points for each chunk
-            val initialChr = new Array[Boolean](sumsize)
-            val cutPoints = new Array[Array[Float]](chunk.length)
-            var indc = 0
-            (0 until chunk.length).map({ indf =>
-              val feat = chunk(indf)
-              bBigChromosome.value.slice(feat.init, feat.end + 1).copyToArray(initialChr, indc)
-              indc = indc + feat.size
-              cutPoints(indf) = bBoundaryPoints.value.slice(feat.init, feat.end + 1)
-            })
-            
-            // Apply the discretizer here!
-            //logInfo(s"Applying discretizer in partition $index")
-            val disc = new EMD(initialChr, alpha, nGeneticEval, classDistrib.size)
-            disc.runAlgorithm()
-            val fitness = disc.getBestFitness
-            val ind = disc.getBestIndividual
-            
-            Array((chID, (ind, fitness))).toIterator
-            //Array((chID, (Array.fill(sumsize)(false), .0f))).toIterator      
-          } else {
-             Iterator.empty 
-          }        
-          /*} else {
-            Iterator.empty 
-          }*/
-        }).mapValues({ case (a, _) => 
-            val ca = new Array[Int](a.length)
-            (0 until a.length).map(i => ca(i) = if(a(i)) 1 else 0)
-            (ca, 1)
-          }).reduceByKey({case ((a1, c1), (a2, c2)) => 
-            ((a1, a2).zipped.map(_ + _), c1 + c2)
-          }).mapValues({ case (a, c) => 
-            val ba =  new Array[Boolean](a.length) 
-            val threshold = c * votingThreshold
-            var nsel = 0
-            (0 until a.length).map(i => ba(i) = if(a(i) >= threshold) {nsel = nsel + 1; true} else false )
-            (ba, nsel / a.length.toFloat)
-          })        
-  
-        // Copy the partial results to the big chromosome
-        val result = evolvChrom.collect()
-        //println(s"Result for local: $nleval, multiVar: $comb - " + result.sortBy(_._1).mkString("\n"))
-        for ((chID, (arr, psel)) <- result) {
-          println(s"$psel % points selected in the chromosome $chID")
-          for(feat <- bChromChunks.value(comb)(chID))
-            arr.copyToArray(bigChromosome, feat.init)
+      val EMDalgorithms = new Array[EMD](chromChunks.length)
+      (0 until chromChunks.length).map { chID =>
+        val chunk = chromChunks(comb)(chID)
+        val sumsize = chunk.map(_.size).sum
+        val initialChr = new Array[Boolean](sumsize)
+        val subset = chunk.map(_.id).map(pointsMatrix).toArray
+        EMDalgorithms(chID) = new EMD(subset, initialChr, alpha, nGeneticEval, classDistrib.size)
+        EMDalgorithms(chID).initPopulation()
+      }    
+    
+      /** Evaluate initial solutions **/
+      var evalPointsByChunk = evaluateChromosomes(chromChunks(comb), samplingRate, nChPart, EMDalgorithms)       
+      for((i, eps) <- evalPointsByChunk) {
+         EMDalgorithms(i).setFitness(eps)
+      }
+      
+      // Start the subsequent evaluations. All the EMD algorithms are synchronized in the evaluation phase.
+      do{            
+        val newPopulations = (0 until EMDalgorithms.length).map{ chID =>
+          val emd = EMDalgorithms(chID)
+          if(!emd.isFinished()) Some(emd.crossover()) else None             
         }
         
-        // Send a new broadcasted copy of the big chromosome
-        bBigChromosome = updateBigChromosome(bigChromosome) // Important to avoid task serialization problem
-      //}      
+        evalPointsByChunk = evaluateChromosomes(chromChunks(comb), samplingRate, nChPart, EMDalgorithms)      
+        for((i, eps) <- evalPointsByChunk) {
+           EMDalgorithms(i).setFitness(eps)
+        }
+        
+        (0 until EMDalgorithms.length).map{ chID =>
+          newPopulations(chID) match {
+            case Some(pop) => EMDalgorithms(chID).newPopulation(pop)
+            case _ => /** Do nothing **/
+          }                     
+        }      
+        
+        evalPointsByChunk = evaluateChromosomes(chromChunks(comb), samplingRate, nChPart, EMDalgorithms)      
+        for((i, eps) <- evalPointsByChunk) {
+           EMDalgorithms(i).setFitness(eps)
+        }     
+      } while(EMDalgorithms.filter(_.isFinished()).length > 0)
+        
+        
+      (0 until nChPart).map({ chID =>
+        val ind = EMDalgorithms(chID).getBestIndividual; var acc = 0; var indi = 0;
+        for(f <- chromChunks(comb)(chID)) {
+          chromoMatrix(f.id) = ind.slice(acc, acc + f.size)
+          acc = acc + f.size
+        }
+      })
+        
+      // Send a new broadcasted copy of the big chromosome
+      bChromoMatrix = updateBroadcast(chromoMatrix) // Important to avoid task serialization problem
     }
     
     // Update the full list features with the thresholds calculated
     val thresholds = Array.fill[Array[Float]](nFeatures)(Array.empty[Float])
-    bChromChunks.value(0).map{ lf =>
-      lf.map({feat =>  
-        val arr = ArrayBuffer.empty[Float]
-        (feat.init to feat.end).map(ind => if(bigChromosome(ind)) arr += boundaryPoints(ind))
-        thresholds(feat.id) = if(arr.length > 0) arr.toArray else Array(Float.PositiveInfinity)
-      })
+    (0 until chromoMatrix.length).map{ i =>
+      val ths = chromoMatrix(i)
+      if (ths != null) {
+        thresholds(i) = if(ths.length > 0) {
+          val arr = ArrayBuffer.empty[Float]
+          (0 until ths.length).map { j => if(ths(j)) arr += pointsMatrix(i)(j)}
+          arr.toArray
+        } else Array(Float.PositiveInfinity)
+      }
     }
     
     new DiscretizerModel(thresholds)

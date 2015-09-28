@@ -25,13 +25,13 @@ public class EMD implements Serializable{
 	/**
 	 * 
 	 */
-	private static final long serialVersionUID = 7575712219028489742L;
 	private long seed;
 	private Chromosome initial_chr;
 	private Chromosome best;
 	private float[][] cut_points;
 	
 	public ArrayList <Chromosome> population;
+	public ArrayList <Chromosome> pop_to_eval;
 	
 	//private int max_cut_points;
 	private int n_cut_points;
@@ -41,7 +41,7 @@ public class EMD implements Serializable{
 	private weka.core.Instances baseTrain;
 	
 	private float r;
-	private float alpha, beta;
+	private float alpha;
 	private float best_fitness;
 	private float prob1to0Rec;
 	private float prob1to0Div;  
@@ -51,7 +51,7 @@ public class EMD implements Serializable{
 	private int n_eval;
 	private int n_restart_not_improving;
 	private int max_eval;
-    
+    private boolean needs_eval = false;
     /**
      * Creates a CHC object with its parameters
      * 
@@ -67,11 +67,10 @@ public class EMD implements Serializable{
     	pop_length = popLength;
     	r = restart_per;
     	alpha = alpha_fitness;
-    	beta = beta_fitness;
     	prob1to0Rec = pr0to1Rec;
     	prob1to0Div = pr0to1Div;
     	this.nClasses = nClasses;
-    	this.cut_points = cut_points;   	
+    	this.cut_points = cut_points; 
     	
     	n_cut_points = 0;
     	for (int i=0; i< cut_points.length; i++) {
@@ -93,6 +92,7 @@ public class EMD implements Serializable{
         	else 
         		this.initial_chr = new Chromosome (n_cut_points, true);
     	}
+    	pop_to_eval = population;
     	
     	this.baseTrain = computeBaseTrain();
     	this.n_eval = 0;
@@ -190,12 +190,25 @@ public class EMD implements Serializable{
     	
     	this.best = best;
     }*/
+
     
-    public ArrayList<Chromosome> crossover() {
+    /**
+     * Creates several population individuals randomly. The first individual has all its values set to true
+     */
+    public void initPopulation () {    	
+    	population.add(initial_chr);    	
+    	for (int i=1; i<pop_length; i++)
+    		population.add(new Chromosome(n_cut_points));
+    	needs_eval = true; pop_to_eval = population;
+    }
+    
+    public ArrayList<Chromosome> crossover() {    	
     	// Select for crossover
     	ArrayList<Chromosome> C_population = randomSelection();
 		// Cross selected individuals
-		return recombine (C_population);
+    	ArrayList<Chromosome> Cr_population = recombine (C_population);
+		needs_eval = true; pop_to_eval = Cr_population;
+		return Cr_population;
     }
     
     public boolean newPopulation(ArrayList<Chromosome> newPop) {
@@ -210,6 +223,7 @@ public class EMD implements Serializable{
 			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
 	    	best_fitness = 100.f;
 			n_restart_not_improving++;
+			needs_eval = true; pop_to_eval = population;
 			return true; // Need an extra evaluation!
 		}
 		return false;
@@ -217,6 +231,10 @@ public class EMD implements Serializable{
     
     public boolean isFinished() {
     	return (n_eval < max_eval) && (n_restart_not_improving < 5);
+    }
+    
+    public boolean needsToEval(){
+    	return needs_eval;
     }
     
     public ArrayList<Chromosome> getPopulation() {
@@ -232,26 +250,19 @@ public class EMD implements Serializable{
     }
     
     /**
-     * Creates several population individuals randomly. The first individual has all its values set to true
-     */
-    public void initPopulation () {
-    	population.add(initial_chr);    	
-    	for (int i=1; i<pop_length; i++)
-    		population.add(new Chromosome(n_cut_points));
-    }
-    
-    /**
      * Evaluates the population individuals. If a chromosome was previously evaluated we do not evaluate it again
      */
-    public EvalPoint[] evalPopulation (ArrayList<Chromosome> pop, float[][] dataset) {
-    	
-    	EvalPoint[] result = new EvalPoint[pop.size()];
-        for (int i = 0; i < pop.size(); i++) {
-            if (pop.get(i).not_eval()) {
-            	result[i] = pop.get(i).evaluate(this.baseTrain, dataset, cut_points);
-            	n_eval++;
+    public EvalPoint[] evalPopulation (float[][] dataset) {
+    	EvalPoint[] result = new EvalPoint[pop_to_eval.size()];
+    	if(needs_eval) {        	
+            for (int i = 0; i < pop_to_eval.size(); i++) {
+                if (pop_to_eval.get(i).not_eval()) {
+                	result[i] = pop_to_eval.get(i).evaluate(this.baseTrain, dataset, cut_points);
+                	n_eval++;
+                }
             }
-        }
+            needs_eval = false;
+    	}
         return result;
     }
     
