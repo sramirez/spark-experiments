@@ -374,7 +374,6 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         val result = evolvChrom.collect()
         //println(s"Result for local: $nleval, multiVar: $comb - " + result.sortBy(_._1).mkString("\n"))
         for ((chID, (arr, psel)) <- result) {
-          println(s"$psel % points selected in the chromosome $chID")
           for(feat <- bChromChunks.value(comb)(chID))
             arr.copyToArray(bigChromosome, feat.init)
         }
@@ -386,13 +385,17 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     
     // Update the full list features with the thresholds calculated
     val thresholds = Array.fill[Array[Float]](nFeatures)(Array.empty[Float])
+    var nfinal = 0
     bChromChunks.value(0).map{ lf =>
       lf.map({feat =>  
         val arr = ArrayBuffer.empty[Float]
         (feat.init to feat.end).map(ind => if(bigChromosome(ind)) arr += boundaryPoints(ind))
         thresholds(feat.id) = if(arr.length > 0) arr.toArray else Array(Float.PositiveInfinity)
+        nfinal = nfinal + thresholds(feat.id).length
       })
     }
+    
+    logInfo(s"Final number of thresholds: $nfinal")
     
     new DiscretizerModel(thresholds)
   }
