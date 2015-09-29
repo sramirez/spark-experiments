@@ -48,7 +48,7 @@ public class EMD implements Serializable{
 	
 	/* Execution parameters */
 	private float threshold;
-	private int n_eval;
+	public int n_eval;
 	private int n_restart_not_improving;
 	private int max_eval;
     private boolean needs_eval = false;
@@ -230,7 +230,7 @@ public class EMD implements Serializable{
     }
     
     public boolean isFinished() {
-    	return (n_eval < max_eval) && (n_restart_not_improving < 5);
+    	return (n_eval >= max_eval) || (n_restart_not_improving >= 5);
     }
     
     public boolean needsToEval(){
@@ -241,16 +241,13 @@ public class EMD implements Serializable{
 		return population;
 	}
     
-    public float getBestFitness(){
-    	return this.best.getFitness();
-    }
-    
-    public boolean[] getBestIndividual(){
-    	return best.getIndividual();
+    public Chromosome getBest(){
+    	Collections.sort(population);
+    	return population.get(0);
     }
     
     /**
-     * Evaluates the population individuals. If a chromosome was previously evaluated we do not evaluate it again
+     * Evaluates the population individuals. If a chromosome was previously evaluated we do not evaluate it again (read-only method)
      */
     public EvalPoint[] evalPopulation (float[][] dataset) {
     	EvalPoint[] result = new EvalPoint[pop_to_eval.size()];
@@ -258,27 +255,30 @@ public class EMD implements Serializable{
             for (int i = 0; i < pop_to_eval.size(); i++) {
                 if (pop_to_eval.get(i).not_eval()) {
                 	result[i] = pop_to_eval.get(i).evaluate(this.baseTrain, dataset, cut_points);
-                	n_eval++;
+                	//n_eval++;
                 }
             }
-            needs_eval = false;
     	}
         return result;
     }
     
     public void setFitness(EvalPoint[] fitnesses) {    	
-    	for (int i = 0; i < population.size(); i++) {
-    		boolean[] ind = population.get(i).getIndividual();
-    		int nsel = 0;
-    		for (int j = 0; j < ind.length; j++) {
-				if(ind[j]) nsel++;
-			}
-    		population.get(i).setFitness(fitnesses[i], nsel, n_cut_points, alpha);
-    		float ind_fitness = population.get(i).getFitness();
-        	if (ind_fitness < best_fitness) {
-        		best_fitness = ind_fitness;            		
-        	}
+    	for (int i = 0; i < pop_to_eval.size(); i++) {
+    		if (pop_to_eval.get(i).not_eval()) {    			
+    			boolean[] ind = pop_to_eval.get(i).getIndividual();
+        		int nsel = 0;
+        		for (int j = 0; j < ind.length; j++) {
+    				if(ind[j]) nsel++;
+    			}
+        		pop_to_eval.get(i).setFitness(fitnesses[i], nsel, n_cut_points, alpha);
+        		float ind_fitness = pop_to_eval.get(i).getFitness();
+            	if (ind_fitness < best_fitness) {
+            		best_fitness = ind_fitness;            		
+            	}
+            	n_eval++;
+    		}    		
     	}
+    	needs_eval = false;
     }
     
     /**

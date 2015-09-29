@@ -13,22 +13,14 @@ import breeze.linalg.SparseVector
 import breeze.linalg.DenseVector
 import breeze.linalg.Vector
 
-class MLlibRegistrator extends KryoRegistrator {
-  override def registerClasses(kryo: Kryo) {
-    kryo.register(classOf[LabeledPoint])    
-    kryo.register(classOf[SparseVector[Byte]])    
-    kryo.register(classOf[DenseVector[Byte]])  
-    kryo.register(classOf[Vector[Byte]])  
-  }
-}
 
-object MainMLlibTest {
+object MainMLlibLocalTest {
 
 	def main(args: Array[String]) {
 	  
 		val initStartTime = System.nanoTime()
 		
-		val conf = new SparkConf()//.setAppName("MLlibTest").setMaster("local[*]")
+		val conf = new SparkConf().setAppName("MLlibTest").setMaster("local[*]")
 		conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 		conf.set("spark.kryo.registrator", "org.ugr.sci2s.mllib.test.MLlibRegistrator")
 		val sc = new SparkContext(conf)
@@ -137,7 +129,7 @@ object MainMLlibTest {
 		val fs = (data: RDD[LabeledPoint]) => {
 			val criterion = new InfoThCriterionFactory(params.getOrElse("fs-criterion", "mrmr"))
 			val nToSelect = MLEU.toInt(params.getOrElse("fs-nfeat", "100"), 100)
-			val npart = MLEU.toInt(params.getOrElse("fs-npart", "864"), 864) // 0 -> w/o pool
+			val npart = MLEU.toInt(params.getOrElse("fs-npart", "20"), 20) // 0 -> w/o pool
 
 			println("*** FS criterion: " + criterion.getCriterion.toString)
 			println("*** Number of features to select: " + nToSelect)
