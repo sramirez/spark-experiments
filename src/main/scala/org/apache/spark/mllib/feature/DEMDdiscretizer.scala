@@ -218,7 +218,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
    * 
    */
   def runAll(
-      contFeat: Option[Seq[Int]],
+      discreteFeat: Option[Seq[Int]],
       nChr: Int,
       userFactor: Int,
       nGeneticEval: Int,
@@ -245,7 +245,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         (false, v.size)
     }
             
-    val contVars = processContinuousAttributes(contFeat, nFeatures)
+    val contVars = processContinuousAttributes(discreteFeat, nFeatures)
     logInfo("Number of continuous attributes: " + contVars.distinct.size)
     logInfo("Total number of attributes: " + nFeatures)      
     if(contVars.isEmpty) logWarning("Discretization aborted. " +
@@ -279,9 +279,9 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     // The largest feature should not be splitted in several parts
     val maxChPartSize = math.max(featInfoBySize(0).size, defChPartSize)
     // Compute the factor of multivariety according to the final size
-    val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize.toFloat / defChPartSize).toInt)
+    val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize.toFloat / defChPartSize))
     val chPartSize = multiVariateFactor * defChPartSize
-    val nChPart = nBoundPoints / chPartSize
+    val nChPart = (nBoundPoints / chPartSize).toInt
     
     /** Print some information about the final configuration **/
     println(s"Total number of boundary points: $nBoundPoints")
@@ -384,13 +384,21 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     }
     
     // Update the full list features with the thresholds calculated
-    val thresholds = Array.fill[Array[Float]](nFeatures)(Array.empty[Float])
+    // all features are supposed to be continuous (without thresholds)
+    val thresholds = Array.fill[Array[Float]](nFeatures)(Array(Float.PositiveInfinity)) 
+    discreteFeat match {
+      case Some(df) => df.map( i => thresholds(i) = Array.empty[Float]) // Discrete feat
+      case None => /** Do nothing **/
+    }
+
     var nfinal = 0
     bChromChunks.value(0).map{ lf =>
       lf.map({feat =>  
         val arr = ArrayBuffer.empty[Float]
         (feat.init to feat.end).map(ind => if(bigChromosome(ind)) arr += boundaryPoints(ind))
-        thresholds(feat.id) = if(arr.length > 0) arr.toArray else Array(Float.PositiveInfinity)
+        if(arr.length > 0) {
+          thresholds(feat.id) = arr.toArray
+        } 
         nfinal = nfinal + thresholds(feat.id).length
       })
     }
@@ -417,7 +425,7 @@ object DEMDdiscretizer {
    */
   def train(
       input: RDD[LabeledPoint],
-      continuousFeaturesIndexes: Option[Seq[Int]] = None,
+      discreteFeaturesIndexes: Option[Seq[Int]] = None,
       nChr: Int = 50,
       nGeneticEval: Int = 5000,
       alpha: Float = .7f,
@@ -425,7 +433,7 @@ object DEMDdiscretizer {
       nMultiVariateEval: Int = 2,
       samplingRate: Float = .1f,
       votingThreshold: Float = .25f) = {
-    new DEMDdiscretizer(input).runAll(continuousFeaturesIndexes, nChr, 
+    new DEMDdiscretizer(input).runAll(discreteFeaturesIndexes, nChr, 
         multiVariateFactor, nGeneticEval, alpha, nMultiVariateEval, samplingRate, votingThreshold)
   }
 }
