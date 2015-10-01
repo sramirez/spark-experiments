@@ -218,7 +218,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
    * 
    */
   def runAll(
-      discreteFeat: Option[Seq[Int]],
+      contFeaturesIndexes: Option[Seq[Int]],
       nChr: Int,
       userFactor: Int,
       nGeneticEval: Int,
@@ -246,7 +246,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         (false, v.size)
     }
             
-    val contVars = processContinuousAttributes(discreteFeat, nFeatures)
+    val contVars = processContinuousAttributes(contFeaturesIndexes, nFeatures)
     logInfo("Number of continuous attributes: " + contVars.distinct.size)
     logInfo("Total number of attributes: " + nFeatures)      
     if(contVars.isEmpty) logWarning("Discretization aborted. " +
@@ -388,12 +388,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     
     // Update the full list features with the thresholds calculated
     // all features are supposed to be continuous (without thresholds)
-    val thresholds = Array.fill[Array[Float]](nFeatures)(Array(Float.PositiveInfinity)) 
-    discreteFeat match {
-      case Some(df) => df.map( i => thresholds(i) = Array.empty[Float]) // Discrete feat
-      case None => /** Do nothing **/
-    }
-
+    val thresholds = Array.fill[Array[Float]](nFeatures)(Array.empty[Float]) 
+    contVars.map(i => thresholds(i) = Array(Float.PositiveInfinity)) // continuous feature
     var nfinal = 0
     bChromChunks.value(0).map{ lf =>
       lf.map({feat =>  
@@ -428,7 +424,7 @@ object DEMDdiscretizer {
    */
   def train(
       input: RDD[LabeledPoint],
-      discreteFeaturesIndexes: Option[Seq[Int]] = None,
+      contFeaturesIndexes: Option[Seq[Int]] = None,
       nChr: Int = 50,
       nGeneticEval: Int = 5000,
       alpha: Float = .7f,
@@ -436,7 +432,7 @@ object DEMDdiscretizer {
       nMultiVariateEval: Int = 2,
       samplingRate: Float = .1f,
       votingThreshold: Float = .25f) = {
-    new DEMDdiscretizer(input).runAll(discreteFeaturesIndexes, nChr, 
+    new DEMDdiscretizer(input).runAll(contFeaturesIndexes, nChr, 
         multiVariateFactor, nGeneticEval, alpha, nMultiVariateEval, samplingRate, votingThreshold)
   }
 }

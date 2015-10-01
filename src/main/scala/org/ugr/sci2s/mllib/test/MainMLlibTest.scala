@@ -60,7 +60,7 @@ object MainMLlibTest {
 		
 		// Discretization
 		val disc = (train: RDD[LabeledPoint]) => {
-			val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+			val contFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
       //val discretizedFeat: Option[Seq[Int]] = None
 			val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
 
@@ -69,7 +69,7 @@ object MainMLlibTest {
 			println("*** Number of bins: " + nBins)			
 
 			val discretizer = MDLPDiscretizer.train(train,
-					discretizedFeat, // continuous features 
+					contFeat, // continuous features 
 					nBins) // max number of values per feature
 		    discretizer
 		}
