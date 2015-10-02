@@ -188,7 +188,7 @@ object MainMLlibTest {
 	  }
       
     // Classification
-    val arity = header match {
+    val headerArity = header match {
           case Some(file) => params.get("disc") match {              
               case Some(s) if s matches "(?i)no" => 
                 val c = KeelParser.parseHeaderFile(sc, file)
@@ -202,17 +202,20 @@ object MainMLlibTest {
     val (algoInfo, classification) = params.get("classifier") match {
       case Some(s) if s matches "(?i)no" => ("", None)
       case Some(s) if s matches "(?i)DT" => 
-        (TreeAdapter.algorithmInfo(params), 
-              Some(TreeAdapter.classify(_: RDD[LabeledPoint], params, arity)))
+        val classifys = (data: RDD[LabeledPoint], arity: Map[Int, Int]) => TreeAdapter.classify(data, params, arity)
+        TreeAdapter.algorithmInfo(params) -> Some(classifys)
       case Some(s) if s matches "(?i)RF" => 
-        (RandomForestAdapter.algorithmInfo(params), 
-            Some(RandomForestAdapter.classify(_: RDD[LabeledPoint], params, arity))) 
-      case Some(s) if s matches "(?i)NB" => (NBadapter.algorithmInfo(params), 
-          Some(NBadapter.classify(_: RDD[LabeledPoint], params)))
-      case Some(s) if s matches "(?i)LR" => (LRadapter.algorithmInfo(params), 
-          Some(LRadapter.classify(_: RDD[LabeledPoint], params)))        
-      case _ => (SVMadapter.algorithmInfo(params), // Default: SVM
-          Some(SVMadapter.classify(_: RDD[LabeledPoint], params)))              
+        val classifys = (data: RDD[LabeledPoint], arity: Map[Int, Int]) => RandomForestAdapter.classify(data, params, arity)
+        RandomForestAdapter.algorithmInfo(params) -> Some(classifys)
+      case Some(s) if s matches "(?i)NB" => 
+        val classifys = (data: RDD[LabeledPoint], arity: Map[Int, Int]) => NBadapter.classify(data, params)
+        NBadapter.algorithmInfo(params) -> Some(classifys)
+      case Some(s) if s matches "(?i)LR" =>         
+        val classifys = (data: RDD[LabeledPoint], arity: Map[Int, Int]) => LRadapter.classify(data, params)
+        LRadapter.algorithmInfo(params) -> Some(classifys)
+      case _ => // Default: SVM
+        val classifys = (data: RDD[LabeledPoint], arity: Map[Int, Int]) => SVMadapter.classify(data, params)
+        SVMadapter.algorithmInfo(params) -> Some(classifys)              
     }
       
     println("*** Classification info:" + algoInfo)
@@ -222,7 +225,7 @@ object MainMLlibTest {
     
 		
 		// Perform the experiment
-	  MLExperimentUtils.executeExperiment(sc, discretization, featureSelection, classification,
+	  MLExperimentUtils.executeExperiment(sc, discretization, featureSelection, classification, headerArity,
 					  (dataFiles, format, dense) , outputDir.get, algoInfo, partitions)
 		
 		sc.stop()

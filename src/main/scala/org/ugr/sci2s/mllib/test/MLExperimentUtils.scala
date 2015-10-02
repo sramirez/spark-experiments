@@ -105,6 +105,8 @@ object MLExperimentUtils {
 						.filter(!_.isEmpty())
 						.map(_.toDouble)
 						.first
+        val discArity = thresholds.map(_.size).zipWithIndex.map(_.swap).toMap
+        
         // More efficient than by-instance version
         println("Readed tresholds")
         val discData = discAlgorithm.transform(train.map(_.features))
@@ -124,7 +126,7 @@ object MLExperimentUtils {
         
         println("Discretized all data")
         
-				(discData, discTestData, discTime)			
+				(discData, discTestData, discArity, discTime)			
 				
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
@@ -141,6 +143,10 @@ object MLExperimentUtils {
             .map({case (i, arr) => i + "," + arr.mkString(",")})
           
           thrsRDD.saveAsTextFile(outputDir + "/discThresholds_" + iteration)
+          val discArity = thrsRDD.map({s => 
+            val splitted = s.split(",")
+            splitted(0).toInt -> (splitted.size - 1)
+          }).collectAsMap()
           
           // More efficient than by-instance version
           val discData = discAlgorithm.transform(train.map(_.features))
@@ -169,7 +175,7 @@ object MLExperimentUtils {
           
           //dtrain.unpersist()
 					
-					(discData, discTestData, discTime)
+					(discData, discTestData, discArity, discTime)
 			}		
 		}
 		
@@ -241,9 +247,10 @@ object MLExperimentUtils {
 		}
 		
 		private def classification(
-				classify: (RDD[LabeledPoint]) => ClassificationModelAdapter, 
+				classify: (RDD[LabeledPoint], Map[Int, Int]) => ClassificationModelAdapter, 
 				train: RDD[LabeledPoint], 
 				test: RDD[LabeledPoint], 
+        arity: Map[Int, Int],
 				outputDir: String,
 				iteration: Int) = {
 		  	
@@ -253,17 +260,17 @@ object MLExperimentUtils {
 		  	 **/
 			try {
 				val traValuesAndPreds = sc.textFile(outputDir + "/result_" + iteration + ".tra")
-						.filter(!_.isEmpty())
-						.map(parsePredictions)
-						
+  						.filter(!_.isEmpty())
+  						.map(parsePredictions)
+  						
 				val tstValuesAndPreds = sc.textFile(outputDir + "/result_" + iteration + ".tst")
-						.filter(!_.isEmpty())
-						.map(parsePredictions)
+  						.filter(!_.isEmpty())
+  						.map(parsePredictions)
 						
 				val classifficationTime = sc.textFile(outputDir + "/classification_time_" + iteration)
-						.filter(!_.isEmpty())
-						.map(_.toDouble)	
-						.first
+  						.filter(!_.isEmpty())
+  						.map(_.toDouble)	
+  						.first
 				
 				(traValuesAndPreds, tstValuesAndPreds, classifficationTime)
 			} catch {
@@ -272,7 +279,7 @@ object MLExperimentUtils {
           train.count()
 					
           val initStartTime = System.nanoTime()	
-					val classificationModel = classify(train)
+					val classificationModel = classify(train, arity)
 					val classificationTime = (System.nanoTime() - initStartTime) / 1e9
 					
 					val traValuesAndPreds = computePredictions2(classificationModel, train)
@@ -314,7 +321,8 @@ object MLExperimentUtils {
 		    sc: SparkContext,
 		    discretize: (Option[(RDD[LabeledPoint]) => DiscretizerModel], Boolean), 
 		    featureSelect: (Option[(RDD[LabeledPoint]) => SelectorModel], Boolean), 
-		    classify: Option[(RDD[LabeledPoint]) => ClassificationModelAdapter],
+		    classify:  Option[(RDD[LabeledPoint], Map[Int, Int]) => ClassificationModelAdapter],
+        initialArity: Map[Int, Int],
 		    inputData: (Any, String, Boolean), 
 		    outputDir: String, 
 		    algoInfo: String,
@@ -394,13 +402,15 @@ object MLExperimentUtils {
 				// Discretization
 				var trData = trainData; var tstData = testData        
 				var taskTime = 0.0
+        var discArity = initialArity
 				discretize match { 
 				  case (Some(disc), b) => 
-				    val (discTrData, discTstData, discTime) = discretization(
+				    val (discTrData, discTstData, dArity, discTime) = discretization(
 								disc, trData, tstData, outputDir, i, save = b) 
 					trData = discTrData
 					tstData = discTstData
 					taskTime = discTime
+          discArity = discArity ++ dArity.toMap
 				  case _ => /* criteria not fulfilled, do not discretize */
 				}				
 				times("DiscTime") = times("DiscTime") :+ taskTime         
@@ -421,7 +431,7 @@ object MLExperimentUtils {
 				classify match { 
 				  case Some(cls) => 
 				    val (traValuesAndPreds, tstValuesAndPreds, classificationTime) = 
-				  		classification(cls, trData, tstData, outputDir, i)
+				  		classification(cls, trData, tstData, discArity, outputDir, i)
 					taskTime = classificationTime
 					predictions = predictions :+ (traValuesAndPreds, tstValuesAndPreds)
 				  case None => taskTime = 0.0 /* criteria not fulfilled, do not classify */
