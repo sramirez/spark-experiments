@@ -280,7 +280,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     // The largest feature should not be splitted in several parts
     val maxChPartSize = math.max(featInfoBySize(0).size, defChPartSize)
     // Compute the factor of multivariety according to the final size
-    val multiVariateFactor = math.max(userFactor, math.ceil(maxChPartSize.toFloat / defChPartSize))
+    val multiVariateFactor = math.max(userFactor, maxChPartSize.toFloat / defChPartSize)
     val chPartSize = multiVariateFactor * defChPartSize
     val nChPart = (nBoundPoints / chPartSize).toInt
     
