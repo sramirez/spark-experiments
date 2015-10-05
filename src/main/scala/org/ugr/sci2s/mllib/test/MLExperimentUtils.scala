@@ -105,7 +105,7 @@ object MLExperimentUtils {
 						.filter(!_.isEmpty())
 						.map(_.toDouble)
 						.first
-        val discArity = thresholds.map(_.size).zipWithIndex.map(_.swap).toMap
+        val discArity = thresholds.map(_.size + 1).zipWithIndex.map(_.swap).filter({case (_, np) => np > 1}).toMap
         
         // More efficient than by-instance version
         println("Readed tresholds")
@@ -145,8 +145,8 @@ object MLExperimentUtils {
           thrsRDD.saveAsTextFile(outputDir + "/discThresholds_" + iteration)
           val discArity = thrsRDD.map({s => 
             val splitted = s.split(",")
-            splitted(0).toInt -> (splitted.size - 1)
-          }).collectAsMap()
+            splitted(0).toInt -> splitted.size // splitted.size - 1 + 1
+          }).filter({case (_, l) => l > 1}).collectAsMap()
           
           // More efficient than by-instance version
           val discData = discAlgorithm.transform(train.map(_.features))
@@ -427,7 +427,8 @@ object MLExperimentUtils {
 				}
 				times("FSTime") = times("FSTime") :+ taskTime
 				
-				//Classification        
+				//Classification    
+        println("Final arity: " + discArity.toString())
 				classify match { 
 				  case Some(cls) => 
 				    val (traValuesAndPreds, tstValuesAndPreds, classificationTime) = 

@@ -13,22 +13,14 @@ import breeze.linalg.SparseVector
 import breeze.linalg.DenseVector
 import breeze.linalg.Vector
 
-class MLlibRegistrator extends KryoRegistrator {
-  override def registerClasses(kryo: Kryo) {
-    kryo.register(classOf[LabeledPoint])    
-    kryo.register(classOf[SparseVector[Byte]])    
-    kryo.register(classOf[DenseVector[Byte]])  
-    kryo.register(classOf[Vector[Byte]])  
-  }
-}
 
-object MainMLlibTest {
+object MainLocalMLlibTest {
 
 	def main(args: Array[String]) {
 	  
 		val initStartTime = System.nanoTime()
 		
-		val conf = new SparkConf()//.setAppName("MLlibTest").setMaster("local[*]")
+		val conf = new SparkConf().setAppName("MLlibTest").setMaster("local[*]")
 		conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 		conf.set("spark.kryo.registrator", "org.ugr.sci2s.mllib.test.MLlibRegistrator")
 		val sc = new SparkContext(conf)
@@ -192,7 +184,7 @@ object MainMLlibTest {
           case Some(file) => params.get("disc") match {              
               case Some(s) if s matches "(?i)no" => 
                 val c = KeelParser.parseHeaderFile(sc, file)
-                val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size + 1) 
+                val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size) 
                 categInfo.toMap
               case _ => Map.empty[Int, Int]
           }
@@ -221,7 +213,7 @@ object MainMLlibTest {
     println("*** Classification info:" + algoInfo)
     
     // Partitions to reformat the dataset
-    val partitions = MLEU.toInt(params.getOrElse("npart", "100"), 100)
+    val partitions = MLEU.toInt(params.getOrElse("npart", "20"), 20)
     
 		
 		// Perform the experiment
