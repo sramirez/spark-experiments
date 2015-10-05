@@ -449,16 +449,16 @@ object MLExperimentUtils {
 			printResults(sc, outputDir, predictions, info, getTimeResults(times.toMap))
 		}
     
-	    private def getTimeResults(timeResults: Map[String, Seq[Double]]) = {
-	        "Mean Discretization Time:\t" + 
-	            timeResults("DiscTime").sum / timeResults("DiscTime").size + " seconds.\n" +
-	        "Mean Feature Selection Time:\t" + 
-	            timeResults("FSTime").sum / timeResults("FSTime").size + " seconds.\n" +
-	       "Mean Classification Time:\t" + 
-	            timeResults("ClsTime").sum / timeResults("ClsTime").size + " seconds.\n" +
-	        "Mean Execution Time:\t" + 
-	            timeResults("FullTime").sum / timeResults("FullTime").size + " seconds.\n" 
-	    }
+    private def getTimeResults(timeResults: Map[String, Seq[Double]]) = {
+        "Mean Discretization Time:\t" + 
+            timeResults("DiscTime").sum / timeResults("DiscTime").size + " seconds.\n" +
+        "Mean Feature Selection Time:\t" + 
+            timeResults("FSTime").sum / timeResults("FSTime").size + " seconds.\n" +
+       "Mean Classification Time:\t" + 
+            timeResults("ClsTime").sum / timeResults("ClsTime").size + " seconds.\n" +
+        "Mean Execution Time:\t" + 
+            timeResults("FullTime").sum / timeResults("FullTime").size + " seconds.\n" 
+    }
 
 		private def printResults(
 				sc: SparkContext,
