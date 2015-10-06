@@ -158,7 +158,7 @@ class MDLPDiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     while(stack.length > 0 && result.size < maxPoints){
       val (bounds, lastThresh) = stack.dequeue
       // Filter the candidates between the last limits added to the stack
-      var cands = candidates.filter({ case (th, _) => th > bounds._1 && th <= bounds._2 })
+      var cands = candidates.filter({ case (th, _) => th > bounds._1 && th < bounds._2 })
       val nCands = cands.count
       if (nCands > 0) {
         cands = cands.coalesce(partitions(nCands))
@@ -172,7 +172,7 @@ class MDLPDiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         }
       }
     }
-    (Float.PositiveInfinity +: result).sorted
+    result.sorted
   }
   
   /**
@@ -196,7 +196,7 @@ class MDLPDiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       val (bounds, lastThresh) = stack.dequeue
       // Filter the candidates between the last limits added to the stack
       val newCandidates = candidates.filter({ case (th, _) => 
-          th > bounds._1 && th <= bounds._2 
+          th > bounds._1 && th < bounds._2 
         })      
       if (newCandidates.size > 0) {
         evalThresholds(newCandidates, lastThresh, nLabels) match {
@@ -208,7 +208,7 @@ class MDLPDiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         }
       }
     }
-    (Float.PositiveInfinity +: result).sorted
+    result.sorted
   }
 
   /**
