@@ -15,8 +15,9 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.mllib.linalg.SparseVector
+import org.apache.spark.Logging
 
-object MLExperimentUtils {
+object MLExperimentUtils extends Logging {
   
 	    def toInt(s: String, default: Int): Int = {
   			try {
@@ -108,7 +109,8 @@ object MLExperimentUtils {
         val discArity = thresholds.map(_.size + 1).zipWithIndex.map(_.swap).filter({case (_, np) => np > 1}).toMap
         
         // More efficient than by-instance version
-        println("Readed tresholds")
+        val np = discArity.values.map(_ - 1).sum
+        logInfo(s"Readed the thresholds.\nTotal number of cut points: $np")
         val discData = discAlgorithm.transform(train.map(_.features))
           .zip(train.map(_.label))
           .map{case (v, l) => LabeledPoint(l, v)}

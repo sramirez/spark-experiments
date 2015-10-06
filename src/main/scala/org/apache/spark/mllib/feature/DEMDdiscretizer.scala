@@ -390,19 +390,15 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     // all features are supposed to be continuous (without thresholds)
     val thresholds = Array.fill[Array[Float]](nFeatures)(Array.empty[Float]) 
     contVars.map(i => thresholds(i) = Array(Float.PositiveInfinity)) // continuous feature
-    var nfinal = 0
     bChromChunks.value(0).map{ lf =>
       lf.map({feat =>  
         val arr = ArrayBuffer.empty[Float]
         (feat.init to feat.end).map(ind => if(bigChromosome(ind)) arr += boundaryPoints(ind))
         if(arr.length > 0) {
           thresholds(feat.id) = arr.toArray
-        } 
-        nfinal = nfinal + thresholds(feat.id).length
+        }
       })
     }
-    
-    logInfo(s"Final number of thresholds: $nfinal")
     
     new DiscretizerModel(thresholds)
   }
