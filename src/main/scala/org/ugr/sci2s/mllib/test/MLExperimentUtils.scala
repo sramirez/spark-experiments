@@ -106,11 +106,12 @@ object MLExperimentUtils extends Logging {
 						.filter(!_.isEmpty())
 						.map(_.toDouble)
 						.first
-        val discArity = thresholds.map(_.size + 1).zipWithIndex.map(_.swap).filter({case (_, np) => np > 1}).toMap
+            
+        val discArity = thresholds.map(_.size + 1).zipWithIndex.map(_.swap).filter({case (_, nb) => nb > 1}).toMap
+        val np = thresholds.filter(_.length > 0).filter(s => s(0) != Float.PositiveInfinity).map(_.size).sum
+        logInfo(s"Readed the thresholds.\nTotal number of cut points: $np")
         
         // More efficient than by-instance version
-        val np = discArity.values.map(_ - 1).sum
-        logInfo(s"Readed the thresholds.\nTotal number of cut points: $np")
         val discData = discAlgorithm.transform(train.map(_.features))
           .zip(train.map(_.label))
           .map{case (v, l) => LabeledPoint(l, v)}
@@ -148,7 +149,9 @@ object MLExperimentUtils extends Logging {
           val discArity = thrsRDD.map({s => 
             val splitted = s.split(",")
             splitted(0).toInt -> splitted.size // splitted.size - 1 + 1
-          }).filter({case (_, l) => l > 1}).collectAsMap()
+          }).filter({case (_, nb) => nb > 1}).collectAsMap()
+          val np = discAlgorithm.thresholds.filter(_.length > 0).filter(s => s(0) != Float.PositiveInfinity).map(_.size).sum
+          logInfo(s"Total number of cut points: $np")
           
           // More efficient than by-instance version
           val discData = discAlgorithm.transform(train.map(_.features))
