@@ -60,8 +60,8 @@ object MainMLlibTest {
 		
 		// Discretization
 		val disc = (train: RDD[LabeledPoint]) => {
-			val contFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-      //val discretizedFeat: Option[Seq[Int]] = None
+			//val contFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+      			val contFeat: Option[Seq[Int]] = None
 			val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
 
 			println("*** Discretization method: Fayyad discretizer (MDLP)")
@@ -81,8 +81,8 @@ object MainMLlibTest {
 		val discretization = params.get("disc") match {
 			case Some(s) if s matches "(?i)mdlp" => 
 		        val disc = (train: RDD[LabeledPoint]) => {
-              val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-              //val discretizedFeat: Option[Seq[Int]] = None
+              //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+              val contFeat: Option[Seq[Int]] = None
               val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
         
               println("*** Discretization method: Fayyad discretizer (MDLP)")
@@ -90,7 +90,7 @@ object MainMLlibTest {
               println("*** Number of bins: " + nBins)     
         
               val discretizer = MDLPDiscretizer.train(train,
-                  discretizedFeat, // continuous features 
+                  contFeat, // continuous features 
                   nBins) // max number of values per feature
               discretizer
             }
@@ -189,13 +189,10 @@ object MainMLlibTest {
       
     // Classification
     val headerArity = header match {
-          case Some(file) => params.get("disc") match {              
-              case Some(s) if s matches "(?i)no" => 
-                val c = KeelParser.parseHeaderFile(sc, file)
-                val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size + 1) 
-                categInfo.toMap
-              case _ => Map.empty[Int, Int]
-          }
+          case Some(file) => 
+            val c = KeelParser.parseHeaderFile(sc, file)
+            val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size + 1) 
+            categInfo.toMap
           case None => Map.empty[Int, Int]
     }
     
