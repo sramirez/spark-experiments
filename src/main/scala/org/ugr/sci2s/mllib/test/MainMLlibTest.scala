@@ -78,13 +78,14 @@ object MainMLlibTest {
                       case Some(s) if s matches "(?i)yes" => true
                       case _ => false
                     }
+    
+    //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+    val contFeat: Option[Seq[Int]] = None
 		val discretization = params.get("disc") match {
 			case Some(s) if s matches "(?i)mdlp" => 
 		        val disc = (train: RDD[LabeledPoint]) => {
-              //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-              val contFeat: Option[Seq[Int]] = None
-              val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
-        
+              
+              val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)        
               println("*** Discretization method: Fayyad discretizer (MDLP)")
               //println("*** Features to discretize: " + discretizedFeat.get.mkString(","))
               println("*** Number of bins: " + nBins)     
@@ -97,8 +98,7 @@ object MainMLlibTest {
             (Some(disc), saveDisc)
       case Some(s) if s matches "(?i)ecpsd" => 
             val disc = (train: RDD[LabeledPoint]) => {
-              val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-              //val discretizedFeat: Option[Seq[Int]] = None   
+              
               val nChr = MLEU.toInt(params.getOrElse("disc-nchrom", "50"), 50)
               val ngeval = MLEU.toInt(params.getOrElse("disc-geval", "5000"), 5000)
               val mvfactor = MLEU.toInt(params.getOrElse("disc-mvfactor", "1"), 1)
@@ -119,7 +119,7 @@ object MainMLlibTest {
               println("*** Voting threshold: " + vth) 
               
               val discretizer = DEMDdiscretizer.train(train,
-                  discretizedFeat,
+                  contFeat,
                   nChr,
                   ngeval,
                   alpha,
