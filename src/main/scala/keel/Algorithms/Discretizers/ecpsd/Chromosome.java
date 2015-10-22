@@ -181,8 +181,7 @@ public class Chromosome implements Comparable, Serializable {
      * @param alpha	Coefficient for the number of cut points importance
      * @param beta	Coefficient for the number of inconsistencies importance
      */
-    public void evaluate (weka.core.Instances base, float[][] dataset, float [][] cut_points, 
-    		int initial_cut_points, float alpha, float beta) {
+    public void evaluate (weka.core.Instances base, float[][] dataset, float [][] cut_points, float alpha, float beta) {
     	
     	weka.core.Instances datatrain = new weka.core.Instances(base);
     	int nInputs = dataset[0].length - 1;
@@ -281,7 +280,7 @@ public class Chromosome implements Comparable, Serializable {
                 seconds + "." + rest);   */
 	    float p_err = (float) nber / datatrain.numInstances();
 	    //float proportion = (double) (dataset.getnData() * 2) / (double) initial_cut_points;
-	    float perc_points= (float) n_selected_cut_points / initial_cut_points;
+	    float perc_points= (float) n_selected_cut_points / individual.length;
         /* fitness = alpha * ((double) n_selected_cut_points / (double) initial_cut_points) 
         		+ beta * proportion * ((double) incons / (double) dataset.getnData()) ;*/
     	fitness = alpha * perc_points + beta * p_err;
