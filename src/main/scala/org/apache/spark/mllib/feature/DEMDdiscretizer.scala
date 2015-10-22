@@ -40,11 +40,18 @@ import scala.collection.mutable.ArrayBuffer
  */
 class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable with Logging {
 
+  private val log2 = { x: Double => math.log(x) / math.log(2) }
   private case class Feature(id: Int, init: Int, end: Int) {
     def size = end - init + 1
   }  
   private val isBoundary = (f1: Array[Long], f2: Array[Long]) => {
     (f1, f2).zipped.map(_ + _).filter(_ != 0).size > 1
+  }
+  private def entropy(freqs: Seq[Long], n: Long) = {
+    // val n = freqs.reduce(_ + _)
+    freqs.aggregate(0.0)({ case (h, q) =>
+      h + (if (q == 0) 0  else (q.toDouble / n) * (math.log(q.toDouble / n) / math.log(2)))
+    }, { case (h1, h2) => h1 + h2 }) * -1
   }
   
   /**
@@ -124,6 +131,223 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     })
   }
   
+  /**
+   * Evaluate boundary points and select the most relevant. This version is used when 
+   * the number of candidates exceeds the maximum size per partition (distributed version).
+   * 
+   * @param candidates RDD of candidates points (point, class histogram).
+   * @param maxBins Maximum number of points to select
+   * @param elementsByPart Maximum number of elements to evaluate in each partition.
+   * @return Sequence of threshold values.
+   * 
+   */
+  private def getThresholds(
+      candidates: RDD[(Float, Array[Long])],
+      maxBins: Int, 
+      elementsByPart: Int,
+      nLabels: Int) = {
+
+    // Get the number of partitions according to the maximum size established by partition
+    val partitions = { x: Long => math.ceil(x.toFloat / elementsByPart).toInt }    
+    
+    // Insert the extreme values in the stack (recursive iteration)
+    val stack = new mutable.Queue[((Float, Float), Option[Float])]
+    stack.enqueue(((Float.NegativeInfinity, Float.PositiveInfinity), None))
+    var result = Seq.empty[Float]
+    val maxPoints = maxBins + 1
+
+    while(stack.length > 0 && result.size < maxPoints){
+      val (bounds, lastThresh) = stack.dequeue
+      // Filter the candidates between the last limits added to the stack
+      var cands = candidates.filter({ case (th, _) => th > bounds._1 && th < bounds._2 })
+      val nCands = cands.count
+      if (nCands > 0) {
+        cands = cands.coalesce(partitions(nCands))
+        // Selects one threshold among the candidates and returns two partitions to recurse
+        evalThresholds(cands, lastThresh, nLabels) match {
+          case Some(th) =>
+            result = th +: result
+            stack.enqueue(((bounds._1, th), Some(th)))
+            stack.enqueue(((th, bounds._2), Some(th)))
+          case None => /* criteria not fulfilled, finish! */
+        }
+      }
+    }
+    result.sorted
+  }
+  
+  /**
+   * Evaluates boundary points and selects the most relevant candidates (sequential version).
+   * Here, the evaluation is bounded by partition as the number of points is small enough.
+   * 
+   * @param candidates RDD of candidates points (point, class histogram).
+   * @param maxBins Maximum number of points to select.
+   * @return Sequence of threshold values.
+   * 
+   */
+  private def getThresholds(candidates: Array[(Float, Array[Long])], maxBins: Int,
+      nLabels: Int) = {
+
+    val stack = new mutable.Queue[((Float, Float), Option[Float])]
+    // Insert first in the stack (recursive iteration)
+    stack.enqueue(((Float.NegativeInfinity, Float.PositiveInfinity), None))
+    var result = Seq.empty[Float]
+    val maxPoints = maxBins + 1
+
+    while(stack.length > 0 && result.size < maxPoints){
+      val (bounds, lastThresh) = stack.dequeue
+      // Filter the candidates between the last limits added to the stack
+      val newCandidates = candidates.filter({ case (th, _) => 
+          th > bounds._1 && th < bounds._2 
+        })      
+      if (newCandidates.size > 0) {
+        evalThresholds(newCandidates, lastThresh, nLabels) match {
+          case Some(th) =>
+            result = th +: result
+            stack.enqueue(((bounds._1, th), Some(th)))
+            stack.enqueue(((th, bounds._2), Some(th)))
+          case None => /* criteria not fulfilled, finish */
+        }
+      }
+    }
+    result.sorted
+  }
+
+  /**
+   * Compute entropy minimization for candidate points in a range,
+   * and select the best one according to the MDLP criterion (RDD version).
+   * 
+   * @param candidates RDD of candidate points (point, class histogram).
+   * @param lastSelected Last selected threshold.
+   * @return The minimum-entropy candidate.
+   * 
+   */
+  private def evalThresholds(
+      candidates: RDD[(Float, Array[Long])],
+      lastSelected : Option[Float],
+      nLabels: Int) = {
+
+    val numPartitions = candidates.partitions.size
+    val sc = candidates.sparkContext
+
+    // Compute the accumulated frequencies by partition
+    val totalsByPart = sc.runJob(candidates, { case it =>
+      val accum = Array.fill(nLabels)(0L)
+      for ((_, freqs) <- it) {for (i <- 0 until nLabels) accum(i) += freqs(i)}
+      accum
+    }: (Iterator[(Float, Array[Long])]) => Array[Long])
+    
+    // Compute the total frequency for all partitions
+    var totals = Array.fill(nLabels)(0L)
+    for (t <- totalsByPart) totals = (totals, t).zipped.map(_ + _)
+    val bcTotalsByPart = sc.broadcast(totalsByPart)
+    val bcTotals = sc.broadcast(totals)
+
+    val result = candidates.mapPartitionsWithIndex({ (slice, it) =>
+      // Accumulate frequencies from the left to the current partition
+      var leftTotal = Array.fill(nLabels)(0L)
+      for (i <- 0 until slice) leftTotal = (leftTotal, bcTotalsByPart.value(i)).zipped.map(_ + _)
+      var entropyFreqs = Seq.empty[(Float, Array[Long], Array[Long], Array[Long])]
+      // ... and from the current partition to the rightmost partition
+      for ((cand, freqs) <- it) {
+        leftTotal = (leftTotal, freqs).zipped.map(_ + _)
+        val rightTotal = (bcTotals.value, leftTotal).zipped.map(_ - _)
+        entropyFreqs = (cand, freqs, leftTotal.clone, rightTotal) +: entropyFreqs
+      }        
+      entropyFreqs.iterator
+    })
+
+    // calculate h(S)
+    // s: number of elements
+    // k: number of distinct classes
+    // hs: entropy        
+    val s  = totals.sum
+    val hs = entropy(totals.toSeq, s)
+    val k  = totals.filter(_ != 0).size
+
+    // select the best threshold according to MDLP
+    val finalCandidates = result.flatMap({
+      case (cand, _, leftFreqs, rightFreqs) =>
+        val k1 = leftFreqs.filter(_ != 0).size; val s1 = leftFreqs.sum
+        val hs1 = entropy(leftFreqs, s1)
+        val k2 = rightFreqs.filter(_ != 0).size; val s2 = rightFreqs.sum
+        val hs2 = entropy(rightFreqs, s2)
+        val weightedHs = (s1 * hs1 + s2 * hs2) / s
+        val gain = hs - weightedHs
+        val delta = log2(math.pow(3, k) - 2) - (k * hs - k1 * hs1 - k2 * hs2)
+        var criterion = (gain - (log2(s - 1) + delta) / s) > -1e-5
+        lastSelected match {
+          case None =>
+          case Some(last) => criterion = criterion && (cand != last)
+        }
+        if (criterion) Seq((weightedHs, cand)) else Seq.empty[(Double, Float)]
+    })
+    // Select among the list of accepted candidate, that with the minimum weightedHs
+    if (finalCandidates.count > 0) Some(finalCandidates.min._2) else None
+  }
+  
+  /**
+   * Compute entropy minimization for candidate points in a range,
+   * and select the best one according to MDLP criterion (sequential version).
+   * 
+   * @param candidates Array of candidate points (point, class histogram).
+   * @param lastSelected last selected threshold.
+   * @param nLabels Number of classes.
+   * @return The minimum-entropy cut point.
+   * 
+   */
+  private def evalThresholds(
+      candidates: Array[(Float, Array[Long])],
+      lastSelected : Option[Float],
+      nLabels: Int): Option[Float] = {
+    
+    // Calculate the total frequencies by label
+    val totals = candidates.map(_._2).reduce((freq1, freq2) => (freq1, freq2).zipped.map(_ + _))
+    
+    // Compute the accumulated frequencies (both left and right) by label
+    var leftAccum = Array.fill(nLabels)(0L)
+    var entropyFreqs = Seq.empty[(Float, Array[Long], Array[Long], Array[Long])]
+    for(i <- 0 until candidates.size) {
+      val (cand, freq) = candidates(i)
+      leftAccum = (leftAccum, freq).zipped.map(_ + _)
+      val rightTotal = (totals, leftAccum).zipped.map(_ - _)
+      entropyFreqs = (cand, freq, leftAccum.clone, rightTotal) +: entropyFreqs
+    }
+
+    // calculate h(S)
+    // s: number of elements
+    // k: number of distinct classes
+    // hs: entropy
+    val s = totals.sum
+    val hs = entropy(totals.toSeq, s)
+    val k = totals.filter(_ != 0).size
+
+    // select best threshold according to the criteria
+    val finalCandidates = entropyFreqs.flatMap({
+      case (cand, _, leftFreqs, rightFreqs) =>
+        val k1 = leftFreqs.filter(_ != 0).size
+        val s1 = if (k1 > 0) leftFreqs.sum else 0
+        val hs1 = entropy(leftFreqs, s1)
+        val k2 = rightFreqs.filter(_ != 0).size
+        val s2 = if (k2 > 0) rightFreqs.sum else 0
+        val hs2 = entropy(rightFreqs, s2)
+        val weightedHs = (s1 * hs1 + s2 * hs2) / s
+        val gain = hs - weightedHs
+        val delta = log2(math.pow(3, k) - 2) - (k * hs - k1 * hs1 - k2 * hs2)
+        var criterion = (gain - (log2(s - 1) + delta) / s) > -1e-5
+        
+        lastSelected match {
+            case None =>
+            case Some(last) => criterion = criterion && (cand != last)
+        }
+
+        if (criterion) Seq((weightedHs, cand)) else Seq.empty[(Double, Float)]
+    })
+    // Select among the list of accepted candidate, that with the minimum weightedHs
+    if (finalCandidates.size > 0) Some(finalCandidates.min._2) else None
+  }
+ 
+  
   private def computeBoundaryPoints(
       nFeatures: Int, 
       contVars: Array[Int], 
@@ -187,10 +411,44 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val barr = data.context.broadcast(arr)
     
     // Get only boundary points from the whole set of distinct values
-    val boundaryPairs = initialThresholds(sortedValues, firstElements, nLabels)
+    /*val boundaryPairs = initialThresholds(sortedValues, firstElements, nLabels)
       .keys
       .filter({case (a, _) => barr.value(a)})
-    boundaryPairs
+    boundaryPairs*/
+    
+        // Get only boundary points from the whole set of distinct values
+    val initialCandidates = initialThresholds(sortedValues, firstElements, nLabels)
+      .map{case ((k, point), c) => (k, (point, c))}
+      .filter({case (k, _) => barr.value(k)})
+      .cache() // It will be iterated for "big" features
+      
+    // Divide RDD into two categories according to the number of points by feature
+    val elementsByPart = 100000
+    val bigIndexes = initialCandidates
+      .countByKey()
+      .filter{case (_, c) => c > elementsByPart}
+    val bBigIndexes = data.context.broadcast(bigIndexes)
+      
+    // The features with a small number of points can be processed in a parallel way
+    val maxBins = 50
+    val smallThresholds = initialCandidates
+      .filter{case (k, _) => !bBigIndexes.value.contains(k) }
+      .groupByKey()
+      .mapValues(_.toArray)
+      .mapValues(points => getThresholds(points.toArray.sortBy(_._1), maxBins, nLabels))
+    
+    // Feature with too many points must be processed iteratively (rare condition)
+    logInfo("Number of features that exceed the maximum size per partition: " + 
+        bigIndexes.size)
+    var bigThresholds = Map.empty[Int, Seq[Float]]
+    for (k <- bigIndexes.keys){ 
+      val cands = initialCandidates.filter{case (k2, _) => k == k2}.values.sortByKey()
+      bigThresholds += ((k, getThresholds(cands, maxBins, elementsByPart, nLabels)))
+    }
+
+    // Join all thresholds in a single structure
+    val bigThRDD = data.context.parallelize(bigThresholds.toSeq)
+    smallThresholds.union(bigThRDD)
   }
   
   private def divideChromosome(featBySize: Array[Feature], nComb: Int, nBins: Int) = {
@@ -256,8 +514,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         classDistrib.toMap, nLabels, isDense).cache()
       
     // Order the boundary points by size and by id to yield the vector of features
-    val nBoundPoints = boundaryPairs.count().toInt
-    val featById = boundaryPairs.mapValues(_ => 1).reduceByKey(_ + _).sortByKey().collect()
+    val nBoundPoints = boundaryPairs.mapValues(_.size).values.sum.toInt
+    val featById = boundaryPairs.mapValues(_.size).sortByKey().collect()
     
     val featInfo = new Array[Feature](featById.length)
     var iindex = 0
@@ -269,7 +527,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val featInfoBySize = featInfo.sortBy(-_.size) // sorted in descending order
     
     /** Get in the driver the vector of boundary points and the big chromosome **/
-    val boundaryPoints = boundaryPairs.values.collect()
+    val boundaryPoints = boundaryPairs.flatMapValues(_.toSeq).values.collect()
     val bBoundaryPoints = sc.broadcast(boundaryPoints)
     val bigChromosome = Array.fill(nBoundPoints)(true)
     var bBigChromosome = sc.broadcast(bigChromosome)    
@@ -309,11 +567,6 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
         val partitionOrder = Random.shuffle((0 until nChPart).toVector)
         
         // Start the map partition phase
-        //val ltotal = 1e7
-        //val linstances = ltotal * nPart / boundaryPoints.length
-        //val frac = linstances * nPart / nInstances
-        //val fraction = if(frac < 1) frac else 1.0 
-        //logInfo(s"Fraction of data used: $fraction")
         val fractions = classDistrib.map({ case (k, v) => k.toDouble -> samplingRate.toDouble})
         val evolvChrom = data.map(lp => lp.label -> lp).sampleByKey(withReplacement = false, fractions, seed)
           .map(_._2).mapPartitionsWithIndex({ (index, it) =>  
