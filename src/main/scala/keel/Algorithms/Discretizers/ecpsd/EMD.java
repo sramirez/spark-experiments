@@ -103,7 +103,7 @@ public class EMD implements Serializable{
         		this.initial_chr = new Chromosome (n_cut_points, true);
     	}
     	
-    	this.baseTrain = computeBaseTrain();
+    	baseTrain = computeBaseTrain();
     	
     }
     
@@ -170,8 +170,6 @@ public class EMD implements Serializable{
     	n_restart_not_improving = 0;
     	int n_reduction = 0;
     	int n_restart = 0;
-    	threshold = (float) n_cut_points / 4.f;
-    	n_restart_not_improving = 0;
     	int next_reduction = 1;
     	boolean reduction = true;
 
@@ -186,6 +184,8 @@ public class EMD implements Serializable{
     		reduction = (n_cut_points * (1 - pReduction) > PROPER_SIZE_CHROMOSOME) &&
     				(n_eval / (max_eval * pEvaluationsForReduction) > next_reduction);
     		if (reduction) {
+    			
+    			System.out.println("Reduction!");
     			// We reduce the population, and it is not evaluated this time
     			reduction(cut_points_log, ((Chromosome)population.get(0)).getIndividual());    	    	
     			cut_points_log = new int[n_cut_points];
@@ -197,16 +197,23 @@ public class EMD implements Serializable{
     			
     			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
     	    	best_fitness = 100.0f;
-
+    	    	
+    	    	baseTrain = computeBaseTrain();
     			evalPopulation();    			
     			n_reduction++;
     			if(n_cut_points * (1 - pReduction) <= PROPER_SIZE_CHROMOSOME) {
     				System.out.println("No more reductions!");
     			}
+    			Collections.sort(population);
+    			//System.out.println("Best error: " + population.get(0).perc_err);
+    			//System.out.println("Best npoints: " + population.get(0).n_cutpoints);
+    			//System.out.println("Best fitness: " + population.get(0).getFitness());
+    	    	//System.out.println("New size: " + population.get(0).getIndividual().length);   
     		}
     		
     		// Select for crossover
     		C_population = randomSelection();
+    		
     		// Cross selected individuals
     		Cr_population = recombine (C_population);
     		// Evaluate new population
@@ -235,17 +242,24 @@ public class EMD implements Serializable{
     			evalPopulation();
     			n_restart++;
     		}
+    		
     	} while ((n_eval < max_eval) && (n_restart_not_improving < 5));
 
     	// The evaluations have finished now, so we select the individual with best fitness
     	Collections.sort(population);
-    	Chromosome best = population.get(0);
-    	
-    	this.best = best;
+    	best = population.get(0);
+    }
+    
+    public float getBestError() {
+    	return best.perc_err;
     }
     
     public float getBestFitness(){
-    	return this.best.getFitness();
+    	return best.getFitness();
+    }
+    
+    public int getCurrentSize(){
+    	return best.getIndividual().length;
     }
     
     public boolean[] getBestIndividual(){
@@ -292,7 +306,7 @@ public class EMD implements Serializable{
         for (int i = 0; i < pop_length; i++) {
             if (population.get(i).not_eval()) {
                 //program.execute(args[0]);
-            	population.get(i).evaluate(this.baseTrain, dataset, cut_points, max_cut_points, alpha, beta);
+            	population.get(i).evaluate(baseTrain, dataset, cut_points, alpha, beta);
             	//population.get(i).evaluate(dataset, cut_points, max_cut_points, alpha, beta);
             	n_eval++;
             }
@@ -380,7 +394,7 @@ public class EMD implements Serializable{
     private void evaluate (ArrayList <Chromosome> pop) {
     	for (int i = 0; i < pop.size(); i++) {
             if (pop.get(i).not_eval()) {
-            	pop.get(i).evaluate(baseTrain, dataset, cut_points, max_cut_points, alpha, beta);
+            	pop.get(i).evaluate(baseTrain, dataset, cut_points, alpha, beta);
             	n_eval++;
             }
         }
