@@ -107,6 +107,7 @@ object MainMLlibTest {
               val alpha = MLEU.toDouble(params.getOrElse("disc-alpha", "0.7"), 0.7).toFloat
               val srate = MLEU.toDouble(params.getOrElse("disc-srate", "0.1"), 0.1).toFloat
               val vth = MLEU.toDouble(params.getOrElse("disc-vth", "0.25"), 0.25).toFloat
+              val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "100"), 100)  
               
               
               println("*** Discretization method: ECPSD discretizer")
@@ -117,6 +118,7 @@ object MainMLlibTest {
               println("*** Number of multivariate evaluations: " + nmeval)
               println("*** Sampling Rate: " + srate) 
               println("*** Voting threshold: " + vth) 
+              println("*** Number of bins: " + nBins)
               
               val discretizer = DEMDdiscretizer.train(train,
                   contFeat,
@@ -126,7 +128,8 @@ object MainMLlibTest {
                   mvfactor,
                   nmeval,
                   srate,
-                  vth) 
+                  vth,
+                  nBins) 
               discretizer
             }
             (Some(disc), saveDisc)

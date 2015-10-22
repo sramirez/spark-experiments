@@ -354,7 +354,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       labels2Int: Map[Double, Int],
       classDist: Map[Int, Long], 
       nLabels: Int,
-      isDense: Boolean) = {
+      isDense: Boolean,
+      maxBins: Int) = {
     
     val bClassDist = data.context.broadcast(classDist)
     val bLabels2Int = data.context.broadcast(labels2Int)
@@ -430,7 +431,6 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     val bBigIndexes = data.context.broadcast(bigIndexes)
       
     // The features with a small number of points can be processed in a parallel way
-    val maxBins = 50
     val smallThresholds = initialCandidates
       .filter{case (k, _) => !bBigIndexes.value.contains(k) }
       .groupByKey()
@@ -483,7 +483,8 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       alpha: Float,
       nMultiVariateEval: Int,
       samplingRate: Float,
-      votingThreshold: Float) = {
+      votingThreshold: Float,
+      maxBins: Int) = {
     
     if (data.getStorageLevel == StorageLevel.NONE) {
       logWarning("The input data is not directly cached, which may hurt performance if its"
@@ -511,7 +512,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       "No continous attribute in the dataset")
     
     val boundaryPairs = computeBoundaryPoints(nFeatures, contVars, labels2Int, 
-        classDistrib.toMap, nLabels, isDense).cache()
+        classDistrib.toMap, nLabels, isDense, maxBins).cache()
       
     // Order the boundary points by size and by id to yield the vector of features
     val nBoundPoints = boundaryPairs.mapValues(_.size).values.sum.toInt
@@ -673,8 +674,7 @@ object DEMDdiscretizer {
    * 
    * @param input RDD of LabeledPoint's.
    * @param continuousFeaturesIndexes Indexes of features to be discretized. 
-   * If it is not provided, the algorithm selects those features with more than 
-   * 256 (byte range) distinct values.
+   * If it is not provided, the algorithm selects those features with more than 256 (byte range) distinct values.
    * @param maxBins Maximum number of thresholds to select per feature.
    * @param maxByPart Maximum number of elements by partition.
    * @return A DiscretizerModel with the subsequent thresholds.
@@ -689,8 +689,9 @@ object DEMDdiscretizer {
       multiVariateFactor: Int = 1,
       nMultiVariateEval: Int = 2,
       samplingRate: Float = .1f,
-      votingThreshold: Float = .25f) = {
+      votingThreshold: Float = .25f,
+      maxBins: Int = 100) = {
     new DEMDdiscretizer(input).runAll(contFeaturesIndexes, nChr, 
-        multiVariateFactor, nGeneticEval, alpha, nMultiVariateEval, samplingRate, votingThreshold)
+        multiVariateFactor, nGeneticEval, alpha, nMultiVariateEval, samplingRate, votingThreshold, maxBins)
   }
 }
