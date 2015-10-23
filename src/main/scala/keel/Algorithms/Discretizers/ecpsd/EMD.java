@@ -54,9 +54,10 @@ public class EMD implements Serializable{
 	private float prob1to0Rec;
 	private float prob1to0Div;  
 	private int n_restart_not_improving;
+	private float pReduction;
 	
 	// Reduction 
-	private static float pReduction = .5f;
+	//private static float pReduction = .5f;
 	private static float pEvaluationsForReduction = .1f;
 	private static int PROPER_SIZE_CHROMOSOME = 1000;
     
@@ -67,7 +68,7 @@ public class EMD implements Serializable{
      */
     public EMD (long seed, float[][] dataset, float [][] cut_points, int eval, int popLength, 
     		float restart_per, float alpha_fitness, float beta_fitness, float pr0to1Rec, 
-    		float pr0to1Div, int nClasses, boolean[] initial_chr, boolean doReduction) {
+    		float pr0to1Div, int nClasses, boolean[][] initial_pop, boolean doReduction, float reductionRate) {
     	
     	this.seed = seed;
     	this.dataset = dataset;
@@ -82,6 +83,7 @@ public class EMD implements Serializable{
     	prob1to0Div = pr0to1Div;
     	this.nClasses = nClasses;
     	this.doReduction = doReduction;
+    	pReduction = reductionRate;
     	
     	max_cut_points = 0;
     	for (int i=0; i< cut_points.length; i++) {
@@ -96,27 +98,28 @@ public class EMD implements Serializable{
     	
     	population = new ArrayList <Chromosome> (pop_length);
     	best_fitness = 100f;
-    	if(initial_chr == null) {
-    		this.initial_chr = new Chromosome (n_cut_points, true);
+    	if(initial_pop == null) {
+    		initial_chr = new Chromosome (n_cut_points, true);
     	} else {
-    		if(initial_chr.length == max_cut_points)
-        		this.initial_chr = new Chromosome (initial_chr);
-        	else 
-        		this.initial_chr = new Chromosome (n_cut_points, true);
+    		this.initial_chr = new Chromosome (initial_chr);
+			for (int i = 0; i < pop_length; i++) {
+				if(i > (initial_pop.length - 1))
+					population.add(new Chromosome(n_cut_points));
+				else
+					population.add(new Chromosome(initial_pop[i]));
+			}
     	}
     	
-    	baseTrain = computeBaseTrain();
-    	
+    	baseTrain = computeBaseTrain();    	
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses, boolean doReduction) {    	
+    public EMD (float[][] current_dataset, float [][] cut_points, boolean[][] initial_pop, float alpha, int nEval, int nClasses, boolean doReduction, float reductionRate) {    	
     	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, .7f, .3f, .25f, .05f, nClasses, null, doReduction);
+    			50, .8f, alpha, 1-alpha, .25f, .05f, nClasses, initial_pop, doReduction, reductionRate);
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, float alpha, int nEval, int nClasses, boolean doReduction) {
-    	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, alpha, 1-alpha, .25f, .05f, nClasses, initial_chr, doReduction);
+    public EMD (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses, boolean doReduction, float reductionRate) {    	
+    	this(964534618L, current_dataset, cut_points, nEval, 50, .8f, .7f, .3f, .25f, .05f, nClasses, null, doReduction, reductionRate);
     }
     
     private weka.core.Instances computeBaseTrain() {
@@ -174,8 +177,10 @@ public class EMD implements Serializable{
 
     	int[] cut_points_log = new int[n_cut_points];   	
     	
-    	initPopulation();
-		evalPopulation();
+    	if(doReduction) {
+    		initPopulation();
+    		evalPopulation();
+    	}
 		
 		do {    		
     		// Select for crossover
