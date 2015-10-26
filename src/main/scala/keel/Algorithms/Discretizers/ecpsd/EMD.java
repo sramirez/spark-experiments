@@ -30,7 +30,6 @@ public class EMD implements Serializable{
 	private float[][] cut_points;
 	private float[][] original_cut_points;
 	private float[][] dataset;
-	private Chromosome initial_chr;
 	private Chromosome best;
 	private boolean doReduction;
 	
@@ -99,18 +98,21 @@ public class EMD implements Serializable{
     	population = new ArrayList <Chromosome> (pop_length);
     	best_fitness = 100f;
     	if(initial_pop == null) {
-    		initial_chr = new Chromosome (n_cut_points, true);
+    		for (int i = 0; i < pop_length; i++)
+    			population.add(new Chromosome(n_cut_points, true));
+				
     	} else {
-    		this.initial_chr = new Chromosome (initial_chr);
 			for (int i = 0; i < pop_length; i++) {
 				if(i > (initial_pop.length - 1))
-					population.add(new Chromosome(n_cut_points));
+					population.add(new Chromosome(n_cut_points, true));
 				else
 					population.add(new Chromosome(initial_pop[i]));
 			}
     	}
-    	
-    	baseTrain = computeBaseTrain();    	
+
+    	baseTrain = computeBaseTrain(); 
+    	evalPopulation();
+    	   	
     }
     
     public EMD (float[][] current_dataset, float [][] cut_points, boolean[][] initial_pop, float alpha, int nEval, int nClasses, boolean doReduction, float reductionRate) {    	
@@ -177,10 +179,6 @@ public class EMD implements Serializable{
 
     	int[] cut_points_log = new int[n_cut_points];   	
     	
-    	if(doReduction) {
-    		initPopulation();
-    		evalPopulation();
-    	}
 		
 		do {    		
     		// Select for crossover
@@ -248,7 +246,15 @@ public class EMD implements Serializable{
     	return best.getIndividual().length;
     }
     
-    public boolean[] getBestIndividual(){
+    public float[][] getReducedPoints() {
+    	return cut_points;
+    }
+    
+    public boolean[] getBestIndividual() {
+    	return best.getIndividual();
+    }
+    
+    public boolean[] getBestOriginalIndividual(){
     	if(max_cut_points == best.getIndividual().length) 
     		return best.getIndividual();
     	
@@ -278,11 +284,11 @@ public class EMD implements Serializable{
     /**
      * Creates several population individuals randomly. The first individual has all its values set to true
      */
-    private void initPopulation () {
+    /*private void initPopulation () {
     	population.add(initial_chr);    	
     	for (int i=1; i<pop_length; i++)
     		population.add(new Chromosome(n_cut_points));
-    }
+    }*/
     
     /**
      * Evaluates the population individuals. If a chromosome was previously evaluated we do not evaluate it again
