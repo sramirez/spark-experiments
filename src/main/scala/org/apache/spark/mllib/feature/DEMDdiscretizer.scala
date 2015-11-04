@@ -512,7 +512,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       "No continous attribute in the dataset")
     
     val boundaryPairs = computeBoundaryPoints(nFeatures, contVars, labels2Int, 
-        classDistrib.toMap, nLabels, isDense, maxBins).cache()
+        classDistrib.toMap, nLabels, isDense, maxBins).filter(_._2.length > 0).cache()
       
     // Order the boundary points by size and by id to yield the vector of features
     val nBoundPoints = boundaryPairs.mapValues(_.size).values.sum.toInt
