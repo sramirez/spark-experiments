@@ -225,7 +225,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
       alpha: Float,
       nMultiVariateEval: Int,
       samplingRate: Float,
-      votingThreshold: Float) = {
+      votingThreshold: Int) = {
     
     if (data.getStorageLevel == StorageLevel.NONE) {
       logWarning("The input data is not directly cached, which may hurt performance if its"
@@ -271,7 +271,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     /** Get in the driver the vector of boundary points and the big chromosome **/
     val boundaryPoints = boundaryPairs.values.collect()
     val bBoundaryPoints = sc.broadcast(boundaryPoints)
-    val bigChromosome = Array.fill(nBoundPoints)(true)
+    var bigChromosome = Array.fill(nBoundPoints)(true)
     var bBigChromosome = sc.broadcast(bigChromosome)    
 
     /** Compute numerical variables to control the number of chunks and chromosome partitions **/
@@ -358,7 +358,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
               //println("Best current size: " + disc.getCurrentSize())
               //println("Best n selected: " + disc.getBestIndividual().filter(_ == 1).length)
               
-              Array((chID, (ind, err, csize))).toIterator
+              Array((chID, (ind, err))).toIterator
               //Array((chID, (Array.fill(sumsize)(false), .0f))).toIterator      
             } else {
                Iterator.empty 
@@ -366,34 +366,41 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
             /*} else {
               Iterator.empty 
             }*/
-          }).mapValues({ case (a, e, s) => 
+         }).mapValues({ case (a, e) =>
               val ca = new Array[Int](a.length)
               (0 until a.length).map(i => ca(i) = if(a(i)) 1 else 0)
-              (ca, 1, e, s)
-            }).reduceByKey({case ((a1, c1, e1, s1), (a2, c2, e2, s2)) => 
-              ((a1, a2).zipped.map(_ + _), c1 + c2, e1, s1)
-            }).mapValues({ case (a, c, e, s) => 
-              val ba =  new Array[Boolean](a.length) 
-              val threshold = c * votingThreshold
-              var nsel = 0
-              (0 until a.length).map(i => ba(i) = if(a(i) >= threshold) {nsel = nsel + 1; true} else false )
-              (ba, nsel / a.length.toFloat, e, s)
-            })        
-    
+              (ca, 1, e)
+            }).reduceByKey({case ((a1, c1, e1), (a2, c2, e2)) =>
+              ((a1, a2).zipped.map(_ + _), c1 + c2, e1)
+            }).mapValues({ case (a, c, e) =>
+              val sorteda = a.zipWithIndex.filter({case (v, _) => v > 0}).sortBy(-_._1).take((votingThreshold / nChPart).toInt)
+              val ba =  new Array[Boolean](a.length)
+              sorteda.map({case (_, k) => ba(k) = true})
+              (ba, a, e)
+            })
+
           // Copy the partial results to the big chromosome
           val result = evolvChrom.collect()
           //println(s"Result for local: $nleval, multiVar: $comb - " + result.sortBy(_._1).mkString("\n"))
-          for ((chID, (arr, psel, e, s)) <- result) {
+          for ((chID, (arr, vot, e)) <- result) {
             val nselect = arr.filter(_ == true).length
-            println(s"$chID chr - error: $e, nselect: $nselect, size: $s")
-            for(feat <- bChromChunks.value(comb)(chID))
-              arr.copyToArray(bigChromosome, feat.init)
+            val hist = vot.groupBy(identity).mapValues(_.size).toString()
+            val size = arr.length
+            println(s"$chID chr - error: $e, nselect: $nselect, size: $size")
+            println(s"$hist")
+            var indc = 0; val chunk = bChromChunks.value(comb)(chID)
+            (0 until chunk.length).map({ indf =>
+               val feat = chunk(indf)
+               arr.slice(indc, indc + feat.size).copyToArray(bigChromosome, feat.init)
+               indc = indc + feat.size
+            })              
           }
-          
+
           // Send a new broadcasted copy of the big chromosome
           bBigChromosome = updateBigChromosome(bigChromosome) // Important to avoid task serialization problem
-        //}      
-    }
+        }
+
+
     
     // Update the full list features with the thresholds calculated
     // all features are supposed to be continuous (without thresholds)
@@ -411,6 +418,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
     
     new DiscretizerModel(thresholds)
   }
+  
 }
 
 object DEMDdiscretizer {
@@ -436,7 +444,7 @@ object DEMDdiscretizer {
       multiVariateFactor: Int = 1,
       nMultiVariateEval: Int = 2,
       samplingRate: Float = .1f,
-      votingThreshold: Float = .25f) = {
+      votingThreshold: Int = 100) = {
     new DEMDdiscretizer(input).runAll(contFeaturesIndexes, nChr, 
         multiVariateFactor, nGeneticEval, alpha, nMultiVariateEval, samplingRate, votingThreshold)
   }
