@@ -374,6 +374,7 @@ class DEMDdiscretizer private (val data: RDD[LabeledPoint]) extends Serializable
               ((a1, a2).zipped.map(_ + _), c1 + c2, e1)
             }).mapValues({ case (a, c, e) =>
               val sorteda = a.zipWithIndex.filter({case (v, _) => v > 0}).sortBy(-_._1).take((votingThreshold / nChPart).toInt)
+              println("sorted first points: " + sorteda.take(5).mkString(" - "))
               val ba =  new Array[Boolean](a.length)
               sorteda.map({case (_, k) => ba(k) = true})
               (ba, a, e)
