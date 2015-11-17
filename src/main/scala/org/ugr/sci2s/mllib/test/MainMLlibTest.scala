@@ -106,8 +106,7 @@ object MainMLlibTest {
               val nmeval = MLEU.toInt(params.getOrElse("disc-nmeval", "2"), 2)
               val alpha = MLEU.toDouble(params.getOrElse("disc-alpha", "0.7"), 0.7).toFloat
               val srate = MLEU.toDouble(params.getOrElse("disc-srate", "0.1"), 0.1).toFloat
-              val vth = MLEU.toDouble(params.getOrElse("disc-vth", "0.25"), 0.25).toFloat
-              
+              val vth = MLEU.toInt(params.getOrElse("disc-vth", "100"), 100)              
               
               println("*** Discretization method: ECPSD discretizer")
               println("*** Number of chromosomes: " + nChr)
