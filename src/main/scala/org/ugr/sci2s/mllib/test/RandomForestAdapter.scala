@@ -35,15 +35,15 @@ object RandomForestAdapter extends ClassifierAdapter {
     val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "100"), 100)
     val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "4"), 4)
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "100"), 100)
-    val categoricalFeaturesInfo = parameters.get("disc") match {              
+    /*val categoricalFeaturesInfo = parameters.get("disc") match {              
       case Some(s) if s matches "(?i)yes" => 
         val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15) + 2 // discretization starts on 1
         val categInfo = for(i <- 0 until train.first().features.size) yield (i, bins) 
         categInfo.toMap
       case _ =>  Map.empty[Int, Int]
-    }
+    }*/
     val model = RandomForest.trainClassifier(train, 
-        numClasses, categoricalFeaturesInfo, numTrees, featSubSet, 
+        numClasses, Map.empty[Int, Int], numTrees, featSubSet, 
         impurity, maxDepth, maxBins)
     new RandomForestAdapter(model)
   }
@@ -55,7 +55,7 @@ object RandomForestAdapter extends ClassifierAdapter {
     val numTrees = MLEU.toInt(parameters.getOrElse("cls-numTrees", "100"), 100)
     val maxDepth = MLEU.toInt(parameters.getOrElse("cls-maxDepth", "4"), 4)
     val maxBins = MLEU.toInt(parameters.getOrElse("cls-maxBins", "100"), 100)
-    val categoricalFeaturesInfo = if(nominalInfo.isEmpty) {
+    /*val categoricalFeaturesInfo = if(nominalInfo.isEmpty) {
       parameters.get("disc") match {              
         case Some(s) if s matches "(?i)yes" => 
           val bins = MLEU.toInt(parameters.getOrElse("disc-nbins", "15"), 15) + 2
@@ -65,9 +65,9 @@ object RandomForestAdapter extends ClassifierAdapter {
       }
     } else {
       nominalInfo
-    }
+    }*/
     val model = RandomForest.trainClassifier(train, 
-        numClasses, categoricalFeaturesInfo, numTrees, featSubSet, 
+        numClasses, nominalInfo, numTrees, featSubSet, 
         impurity, maxDepth, maxBins)
     new RandomForestAdapter(model)
 	}

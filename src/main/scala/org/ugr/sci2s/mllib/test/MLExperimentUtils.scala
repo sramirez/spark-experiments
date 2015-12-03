@@ -15,8 +15,9 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.mllib.util.MLUtils
 import org.apache.spark.mllib.evaluation.MulticlassMetrics
 import org.apache.spark.mllib.linalg.SparseVector
+import org.apache.spark.Logging
 
-object MLExperimentUtils {
+object MLExperimentUtils extends Logging {
   
 	    def toInt(s: String, default: Int): Int = {
   			try {
@@ -105,8 +106,12 @@ object MLExperimentUtils {
 						.filter(!_.isEmpty())
 						.map(_.toDouble)
 						.first
+            
+        val discArity = thresholds.map(_.size + 1).zipWithIndex.map(_.swap).filter({case (_, nb) => nb > 1}).toMap
+        val np = thresholds.filter(_.length > 0).filter(s => s(0) != Float.PositiveInfinity).map(_.size).sum
+        logInfo(s"Readed the thresholds.\nTotal number of cut points: $np")
+        
         // More efficient than by-instance version
-        println("Readed tresholds")
         val discData = discAlgorithm.transform(train.map(_.features))
           .zip(train.map(_.label))
           .map{case (v, l) => LabeledPoint(l, v)}
@@ -124,16 +129,14 @@ object MLExperimentUtils {
         
         println("Discretized all data")
         
-				(discData, discTestData, discTime)			
+				(discData, discTestData, discArity, discTime)			
 				
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
 					
-          val dtrain = train.persist(StorageLevel.MEMORY_ONLY)
-          val c = dtrain.count()
-          
+          train.count()          
           val initStartTime = System.nanoTime()
-					val discAlgorithm = discretize(dtrain)
+					val discAlgorithm = discretize(train)
 					val discTime = (System.nanoTime() - initStartTime) / 1e9 
           
           val thrsRDD = sc.parallelize(discAlgorithm.thresholds.zipWithIndex)
@@ -142,14 +145,26 @@ object MLExperimentUtils {
             .map({case (i, arr) => i + "," + arr.mkString(",")})
           
           thrsRDD.saveAsTextFile(outputDir + "/discThresholds_" + iteration)
+          val discArity = thrsRDD.map({s => 
+            val splitted = s.split(",")
+            splitted(0).toInt -> splitted.size // splitted.size - 1 + 1
+          }).filter({case (_, nb) => nb > 1}).collectAsMap()
+          val np = discAlgorithm.thresholds.filter(_.length > 0).filter(s => s(0) != Float.PositiveInfinity).map(_.size).sum
+          logInfo(s"Total number of cut points: $np")
           
           // More efficient than by-instance version
-          val discData = discAlgorithm.transform(dtrain.map(_.features))
-            .zip(dtrain.map(_.label))
+          val discData = discAlgorithm.transform(train.map(_.features))
+            .zip(train.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
+            .persist(StorageLevel.MEMORY_ONLY)
+          val c = discData.count()
           val discTestData = discAlgorithm.transform(test.map(_.features))
             .zip(test.map(_.label))
             .map{case (v, l) => LabeledPoint(l, v)}
+            .persist(StorageLevel.MEMORY_ONLY)
+          val c1 = discTestData.count()
+            
+          train.unpersist(); test.unpersist();
           
           // Save discretized data 
           if(save) {
@@ -162,9 +177,9 @@ object MLExperimentUtils {
 					val strTime = sc.parallelize(Array(discTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/disc_time_" + iteration)
           
-          dtrain.unpersist()
+          //dtrain.unpersist()
 					
-					(discData, discTestData, discTime)
+					(discData, discTestData, discArity, discTime)
 			}		
 		}
 		
@@ -201,18 +216,21 @@ object MLExperimentUtils {
         
 				(redTrain, redTest, FSTime)
 			} catch {
-				case iie: org.apache.hadoop.mapred.InvalidInputException =>
-					
-          val fstrain = train.persist(StorageLevel.MEMORY_ONLY)
-          val c = fstrain.count()
+          case iie: org.apache.hadoop.mapred.InvalidInputException =>
           
+          train.count()
           val initStartTime = System.nanoTime()
-					val featureSelector = fs(fstrain)
+					val featureSelector = fs(train)
 					val FSTime = (System.nanoTime() - initStartTime) / 1e9
           
           
-          val redTrain = fstrain.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
+          val redTrain = train.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
+            .persist(StorageLevel.MEMORY_ONLY)
+          val c = redTrain.count()
           val redTest = test.map(i => LabeledPoint(i.label, featureSelector.transform(i.features)))
+            .persist(StorageLevel.MEMORY_ONLY)
+          val c2 = redTest.count()
+          train.unpersist(); test.unpersist()
           
           // Save reduced data 
           if(save) {
@@ -227,17 +245,16 @@ object MLExperimentUtils {
 					parFSscheme.saveAsTextFile(outputDir + "/fs_scheme_" + iteration)
 					val strTime = sc.parallelize(Array(FSTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/fs_time_" + iteration)
-          
-          fstrain.unpersist()
 					
 					(redTrain, redTest, FSTime)
 			}
 		}
 		
 		private def classification(
-				classify: (RDD[LabeledPoint]) => ClassificationModelAdapter, 
+				classify: (RDD[LabeledPoint], Map[Int, Int]) => ClassificationModelAdapter, 
 				train: RDD[LabeledPoint], 
 				test: RDD[LabeledPoint], 
+        arity: Map[Int, Int],
 				outputDir: String,
 				iteration: Int) = {
 		  	
@@ -247,30 +264,35 @@ object MLExperimentUtils {
 		  	 **/
 			try {
 				val traValuesAndPreds = sc.textFile(outputDir + "/result_" + iteration + ".tra")
-						.filter(!_.isEmpty())
-						.map(parsePredictions)
-						
+  						.filter(!_.isEmpty())
+  						.map(parsePredictions)
+  						
 				val tstValuesAndPreds = sc.textFile(outputDir + "/result_" + iteration + ".tst")
-						.filter(!_.isEmpty())
-						.map(parsePredictions)
+  						.filter(!_.isEmpty())
+  						.map(parsePredictions)
 						
 				val classifficationTime = sc.textFile(outputDir + "/classification_time_" + iteration)
-						.filter(!_.isEmpty())
-						.map(_.toDouble)	
-						.first
+  						.filter(!_.isEmpty())
+  						.map(_.toDouble)	
+  						.first
 				
 				(traValuesAndPreds, tstValuesAndPreds, classifficationTime)
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException => 
-          val ctrain = train.persist(StorageLevel.MEMORY_ONLY)
-          val nInstances = ctrain.count() // to persist train and not to affect time measurements
+          
+          train.count()
 					
           val initStartTime = System.nanoTime()	
-					val classificationModel = classify(ctrain)
+					val classificationModel = classify(train, arity)
 					val classificationTime = (System.nanoTime() - initStartTime) / 1e9
 					
-					val traValuesAndPreds = computePredictions2(classificationModel, ctrain).cache()
-					val tstValuesAndPreds = computePredictions2(classificationModel, test).cache()
+					val traValuesAndPreds = computePredictions2(classificationModel, train)
+            .persist(StorageLevel.MEMORY_ONLY)
+          val c1 = traValuesAndPreds.count()
+					val tstValuesAndPreds = computePredictions2(classificationModel, test)
+            .persist(StorageLevel.MEMORY_ONLY)
+          val c2 = tstValuesAndPreds.count()
+          //train.unpersist(); test.unpersist();
 					
           //val c = tstValuesAndPreds.count()
 					// Save prediction results
@@ -282,8 +304,8 @@ object MLExperimentUtils {
           val strTime = sc.parallelize(Array(classificationTime.toString), 1)
 					strTime.saveAsTextFile(outputDir + "/classification_time_" + iteration)
           
-          ctrain.unpersist()
-					
+          //ctrain.unpersist()
+          
 					(traValuesAndPreds, tstValuesAndPreds, classificationTime)
 			}
 		}
@@ -303,7 +325,8 @@ object MLExperimentUtils {
 		    sc: SparkContext,
 		    discretize: (Option[(RDD[LabeledPoint]) => DiscretizerModel], Boolean), 
 		    featureSelect: (Option[(RDD[LabeledPoint]) => SelectorModel], Boolean), 
-		    classify: Option[(RDD[LabeledPoint]) => ClassificationModelAdapter],
+		    classify:  Option[(RDD[LabeledPoint], Map[Int, Int]) => ClassificationModelAdapter],
+        initialArity: Map[Int, Int],
 		    inputData: (Any, String, Boolean), 
 		    outputDir: String, 
 		    algoInfo: String,
@@ -369,23 +392,29 @@ object MLExperimentUtils {
                 
 				val (trainFile, testFile) = dataFiles(i)
 				val rawtra = readFile(trainFile)
-				val rawtst = readFile(testFile)
+				val testData = readFile(testFile)
 				
-        val nparttr = rawtra.partitions.size; val npartts = rawtst.partitions.size
-        val trainData = if(npart <= nparttr) rawtra.coalesce(npart, false).cache() else rawtra.repartition(npart).cache()
+        val nparttr = rawtra.partitions.size
+        val trainData = if(npart <= nparttr) rawtra.coalesce(npart, false) else 
+          rawtra.repartition(npart)
+        trainData.persist(StorageLevel.MEMORY_ONLY)
+        println("Number of instances in training: " + trainData.count())
         //val tstData = if(npart > npartts) rawtst.coalesce(npart, false) else rawtst.repartition(npart)
-        val testData = rawtst
+        testData.persist(StorageLevel.MEMORY_ONLY)
+        println("Number of instances in test: " + testData.count())
         
 				// Discretization
 				var trData = trainData; var tstData = testData        
 				var taskTime = 0.0
+        var discArity = initialArity
 				discretize match { 
 				  case (Some(disc), b) => 
-				    val (discTrData, discTstData, discTime) = discretization(
+				    val (discTrData, discTstData, dArity, discTime) = discretization(
 								disc, trData, tstData, outputDir, i, save = b) 
 					trData = discTrData
 					tstData = discTstData
 					taskTime = discTime
+          discArity = discArity ++ dArity.toMap
 				  case _ => /* criteria not fulfilled, do not discretize */
 				}				
 				times("DiscTime") = times("DiscTime") :+ taskTime         
@@ -402,11 +431,12 @@ object MLExperimentUtils {
 				}
 				times("FSTime") = times("FSTime") :+ taskTime
 				
-				//Classification        
+				//Classification    
+        println("Final arity: " + discArity.toString())
 				classify match { 
 				  case Some(cls) => 
 				    val (traValuesAndPreds, tstValuesAndPreds, classificationTime) = 
-				  		classification(cls, trData, tstData, outputDir, i)
+				  		classification(cls, trData, tstData, discArity, outputDir, i)
 					taskTime = classificationTime
 					predictions = predictions :+ (traValuesAndPreds, tstValuesAndPreds)
 				  case None => taskTime = 0.0 /* criteria not fulfilled, do not classify */
@@ -424,16 +454,16 @@ object MLExperimentUtils {
 			printResults(sc, outputDir, predictions, info, getTimeResults(times.toMap))
 		}
     
-	    private def getTimeResults(timeResults: Map[String, Seq[Double]]) = {
-	        "Mean Discretization Time:\t" + 
-	            timeResults("DiscTime").sum / timeResults("DiscTime").size + " seconds.\n" +
-	        "Mean Feature Selection Time:\t" + 
-	            timeResults("FSTime").sum / timeResults("FSTime").size + " seconds.\n" +
-	       "Mean Classification Time:\t" + 
-	            timeResults("ClsTime").sum / timeResults("ClsTime").size + " seconds.\n" +
-	        "Mean Execution Time:\t" + 
-	            timeResults("FullTime").sum / timeResults("FullTime").size + " seconds.\n" 
-	    }
+    private def getTimeResults(timeResults: Map[String, Seq[Double]]) = {
+        "Mean Discretization Time:\t" + 
+            timeResults("DiscTime").sum / timeResults("DiscTime").size + " seconds.\n" +
+        "Mean Feature Selection Time:\t" + 
+            timeResults("FSTime").sum / timeResults("FSTime").size + " seconds.\n" +
+       "Mean Classification Time:\t" + 
+            timeResults("ClsTime").sum / timeResults("ClsTime").size + " seconds.\n" +
+        "Mean Execution Time:\t" + 
+            timeResults("FullTime").sum / timeResults("FullTime").size + " seconds.\n" 
+    }
 
 		private def printResults(
 				sc: SparkContext,
@@ -466,9 +496,9 @@ object MLExperimentUtils {
   		    output += "Test Confusion Matrix\n" + tststat.confusionMatrix.toString + "\n"
           output += "Train Confusion Matrix\n" + trastat.confusionMatrix.toString + "\n"
           output += "F-Measure (tra/tst):" + trastat.fMeasure + " - " + tststat.fMeasure + "\n"
-          output += "Precision (tra/tst):" + trastat.fMeasure + " - " + tststat.precision + "\n"
+          output += "Precision (tra/tst):" + trastat.precision + " - " + tststat.precision + "\n"
           output += "Recall(tra/tst):" + trastat.recall + " - " + tststat.recall + "\n"
-          val traauc = (1 + trastat.truePositiveRate(1.0) - trastat.falsePositiveRate(1.0)) / 2
+          val traauc = (1 + trastat.truePositiveRate(1.0) - tststat.falsePositiveRate(1.0)) / 2
           val tstauc = (1 + tststat.truePositiveRate(1.0) - tststat.falsePositiveRate(1.0)) / 2
           output += "AUC (label: 1.0): " + traauc + " - " + tstauc + "\n"             
       }

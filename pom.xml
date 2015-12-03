@@ -33,13 +33,26 @@
     <dependency> <!-- Spark dependency -->
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-core_2.10</artifactId>
-      <version>1.4.0</version>
+      <version>1.5.0</version>
     </dependency>
     <dependency>
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-mllib_2.10</artifactId>
-      <version>1.4.0</version>
+      <version>1.5.0</version>
     </dependency>
+    <dependency>
+		<groupId>nz.ac.waikato.cms.weka</groupId>
+		<artifactId>weka-dev</artifactId>
+		<version>3.7.5</version>
+		<scope>provided</scope>
+	</dependency>
+	<!--<dependency>
+    	<groupId>nz.ac.waikato.cms.weka</groupId>
+    	<artifactId>weka</artifactId>
+    	<version>3.7.10</version>
+    	<scope>system</scope>
+   		<systemPath>${project.basedir}/lib/weka.jar</systemPath>
+	</dependency>  -->
     <dependency>
   	<groupId>com.github.fommil.netlib</groupId>
   	<artifactId>all</artifactId>
@@ -51,11 +64,11 @@
       <artifactId>hadoop-client</artifactId>
       <version>2.2.0</version>
     </dependency>      
-    <dependency>
+    <!--<dependency>
         <groupId>com.google.protobuf</groupId>
         <artifactId>protobuf-java</artifactId>
         <version>2.4.1</version>
-    </dependency>
+    </dependency>  -->
     <dependency>
       <groupId>org.scala-lang</groupId>
       <artifactId>scala-library</artifactId>

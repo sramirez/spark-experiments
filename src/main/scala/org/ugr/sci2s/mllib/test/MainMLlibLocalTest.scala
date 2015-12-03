@@ -13,22 +13,14 @@ import breeze.linalg.SparseVector
 import breeze.linalg.DenseVector
 import breeze.linalg.Vector
 
-class MLlibRegistrator extends KryoRegistrator {
-  override def registerClasses(kryo: Kryo) {
-    kryo.register(classOf[LabeledPoint])    
-    kryo.register(classOf[SparseVector[Byte]])    
-    kryo.register(classOf[DenseVector[Byte]])  
-    kryo.register(classOf[Vector[Byte]])  
-  }
-}
 
-object MainMLlibTest {
+object MainLocalMLlibTest {
 
 	def main(args: Array[String]) {
 	  
 		val initStartTime = System.nanoTime()
 		
-		val conf = new SparkConf()//.setAppName("MLlibTest").setMaster("local[*]")
+		val conf = new SparkConf().setAppName("MLlibTest").setMaster("local[*]")
 		conf.set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
 		conf.set("spark.kryo.registrator", "org.ugr.sci2s.mllib.test.MLlibRegistrator")
 		val sc = new SparkContext(conf)
@@ -60,8 +52,8 @@ object MainMLlibTest {
 		
 		// Discretization
 		val disc = (train: RDD[LabeledPoint]) => {
-			//val contFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-      			val contFeat: Option[Seq[Int]] = None
+			val contFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+      //val discretizedFeat: Option[Seq[Int]] = None
 			val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
 
 			println("*** Discretization method: Fayyad discretizer (MDLP)")
@@ -78,27 +70,27 @@ object MainMLlibTest {
                       case Some(s) if s matches "(?i)yes" => true
                       case _ => false
                     }
-    
-    //val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
-    val contFeat: Option[Seq[Int]] = None
 		val discretization = params.get("disc") match {
 			case Some(s) if s matches "(?i)mdlp" => 
 		        val disc = (train: RDD[LabeledPoint]) => {
-              
-              val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)        
+              val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+              //val discretizedFeat: Option[Seq[Int]] = None
+              val nBins = MLEU.toInt(params.getOrElse("disc-nbins", "15"), 15)
+        
               println("*** Discretization method: Fayyad discretizer (MDLP)")
               //println("*** Features to discretize: " + discretizedFeat.get.mkString(","))
               println("*** Number of bins: " + nBins)     
         
               val discretizer = MDLPDiscretizer.train(train,
-                  contFeat, // continuous features 
+                  discretizedFeat, // continuous features 
                   nBins) // max number of values per feature
               discretizer
             }
             (Some(disc), saveDisc)
       case Some(s) if s matches "(?i)ecpsd" => 
             val disc = (train: RDD[LabeledPoint]) => {
-              
+              val discretizedFeat = Some(((0 to 2) ++ (21 to 38) ++ (93 to 130) ++ (151 to 630)).toSeq)
+              //val discretizedFeat: Option[Seq[Int]] = None   
               val nChr = MLEU.toInt(params.getOrElse("disc-nchrom", "50"), 50)
               val ngeval = MLEU.toInt(params.getOrElse("disc-geval", "5000"), 5000)
               val mvfactor = MLEU.toInt(params.getOrElse("disc-mvfactor", "1"), 1)
@@ -118,7 +110,7 @@ object MainMLlibTest {
               println("*** Voting threshold: " + vth) 
               
               val discretizer = DEMDdiscretizer.train(train,
-                  contFeat,
+                  discretizedFeat,
                   nChr,
                   ngeval,
                   alpha,
@@ -188,10 +180,13 @@ object MainMLlibTest {
       
     // Classification
     val headerArity = header match {
-          case Some(file) => 
-            val c = KeelParser.parseHeaderFile(sc, file)
-            val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size + 1) 
-            categInfo.toMap
+          case Some(file) => params.get("disc") match {              
+              case Some(s) if s matches "(?i)no" => 
+                val c = KeelParser.parseHeaderFile(sc, file)
+                val categInfo = for(i <- 0 until (c.size - 1) if !c(i).isDefinedAt("min")) yield (i, c(i).size) 
+                categInfo.toMap
+              case _ => Map.empty[Int, Int]
+          }
           case None => Map.empty[Int, Int]
     }
     
@@ -217,7 +212,7 @@ object MainMLlibTest {
     println("*** Classification info:" + algoInfo)
     
     // Partitions to reformat the dataset
-    val partitions = MLEU.toInt(params.getOrElse("npart", "100"), 100)
+    val partitions = MLEU.toInt(params.getOrElse("npart", "20"), 20)
     
 		
 		// Perform the experiment
