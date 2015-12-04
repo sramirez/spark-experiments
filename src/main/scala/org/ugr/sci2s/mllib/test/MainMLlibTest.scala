@@ -102,8 +102,6 @@ object MainMLlibTest {
               val nChr = MLEU.toInt(params.getOrElse("disc-nchrom", "50"), 50)
               val ngeval = MLEU.toInt(params.getOrElse("disc-geval", "5000"), 5000)
               val mvfactor = MLEU.toInt(params.getOrElse("disc-mvfactor", "1"), 1)
-              //val nleval = MLEU.toInt(params.getOrElse("disc-nleval", "1"), 1)
-              val nmeval = MLEU.toInt(params.getOrElse("disc-nmeval", "2"), 2)
               val alpha = MLEU.toDouble(params.getOrElse("disc-alpha", "0.7"), 0.7).toFloat
               val srate = MLEU.toDouble(params.getOrElse("disc-srate", "0.1"), 0.1).toFloat
               val vth = MLEU.toInt(params.getOrElse("disc-vth", "100"), 100)              
@@ -112,8 +110,6 @@ object MainMLlibTest {
               println("*** Number of chromosomes: " + nChr)
               println("*** Multivariate Factor: " + mvfactor)
               println("*** Number of genetic evaluations: " + ngeval)
-              // println("*** Number of local evaluations: " + nleval)
-              println("*** Number of multivariate evaluations: " + nmeval)
               println("*** Sampling Rate: " + srate) 
               println("*** Voting threshold: " + vth) 
               
@@ -123,7 +119,6 @@ object MainMLlibTest {
                   ngeval,
                   alpha,
                   mvfactor,
-                  nmeval,
                   srate,
                   vth) 
               discretizer
