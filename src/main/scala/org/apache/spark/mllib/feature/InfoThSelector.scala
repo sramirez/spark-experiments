@@ -43,9 +43,10 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
   // Case class for criteria/feature
   protected case class F(feat: Int, crit: Double) 
   // Case class for columnar data (dense and sparse version)
-  private case class ColumnarData(dense: RDD[(Int, (Int, Array[Byte]))], 
+  private case class ColumnarData(dense: RDD[(Int, Array[Byte])], 
       sparse: RDD[(Int, BV[Byte])],
-      isDense: Boolean)
+      isDense: Boolean,
+      originalNPart: Int)
 
   /**
    * Performs a info-theory FS process.
@@ -67,7 +68,7 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
     // Initialize all criteria with the relevance computed in this phase. 
     // It also computes and saved some information to be re-used.
     val (it, relevances) = if(data.isDense) {
-      val it = InfoTheory.initializeDense(data.dense, label, nInstances, nFeatures)
+      val it = InfoTheory.initializeDense(data.dense, label, nInstances, nFeatures, data.originalNPart)
       (it, it.relevances)
     } else {
       val it = InfoTheory.initializeSparse(data.sparse, label, nInstances, nFeatures)
@@ -191,7 +192,8 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
           mat(reg.features.size)(j) = classMap(reg.label)
           j += 1
         }
-        val chunks = for(i <- 0 until nFeatures) yield (i -> (index, mat(i)))
+        
+        val chunks = for(i <- 0 until nFeatures) yield ((i * nPart + index) -> mat(i))
         chunks.toIterator
       })      
       
@@ -199,7 +201,7 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
       // It will avoid to shuffle too much histograms
       val denseData = columnarData.sortByKey(numPartitions = np).persist(StorageLevel.MEMORY_ONLY)
       
-      ColumnarData(denseData, null, true)      
+      ColumnarData(denseData, null, true, data.partitions.size)      
     } else {      
       
       val np = if(nPart == 0) data.conf.getInt("spark.default.parallelism", 750) else nPart
@@ -231,7 +233,7 @@ class InfoThSelector private[feature] (val criterionFactory: FT) extends Seriali
           }
         }).persist(StorageLevel.MEMORY_ONLY)
       
-      ColumnarData(null, columnarData, false)
+      ColumnarData(null, columnarData, false, data.partitions.size)
     }
     
     // Start the main algorithm
