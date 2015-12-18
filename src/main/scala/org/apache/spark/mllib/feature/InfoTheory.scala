@@ -356,7 +356,7 @@ class InfoTheoryDense (
     val min = fixedFeat * originalNPart
     val yvals = data.filterByRange(min, min + originalNPart - 1).collect()
     val ycol = Array.ofDim[Array[Byte]](yvals.length)
-    yvals.foreach({ case (b, v) => ycol(b) = v })
+    yvals.foreach({ case (b, v) => ycol(b % originalNPart) = v })
     fixedFeat -> data.context.broadcast(ycol)
   }
   
