@@ -15,23 +15,20 @@ import java.util.Random;
  * 
  * <p>Company: KEEL </p>
  *
- * @author Written by Sergio Ramirez (University of Granada) (10/01/2014)
+ * @author Modified by Sergio Ramirez (University of Granada) (04/12/2015)
  * @version 1.5
  * @since JDK1.5
  */
 
 public class EMD implements Serializable{
-	
-	/**
-	 * 
-	 */
+
 	private static final long serialVersionUID = 7575712219028489742L;
 	private long seed;
 	private float[][] cut_points;
 	private float[][] original_cut_points;
 	private float[][] dataset;
+	private Chromosome initial_chr;
 	private Chromosome best;
-	private boolean doReduction;
 	
 	private ArrayList <Chromosome> population;
 	
@@ -53,21 +50,28 @@ public class EMD implements Serializable{
 	private float prob1to0Rec;
 	private float prob1to0Div;  
 	private int n_restart_not_improving;
-	private float pReduction;
 	
 	// Reduction 
-	//private static float pReduction = .5f;
+	private static float pReduction = .5f;
 	private static float pEvaluationsForReduction = .1f;
 	private static int PROPER_SIZE_CHROMOSOME = 1000;
     
     /**
      * Creates a CHC object with its parameters
      * 
-     * @param pop	Population of rules we want to select
+     * @param seed Seed initialization parameter
+     * @param dataset Input data in tabular format
+     * @param cut_points Cut points to evaluate in tabular format
+     * @param eval Number of evaluations for GA
+     * @param popLength Number of chromosomes
+     * @param restart_per Restar percentage for population
+     * @param alpha_fitness Weight factor for fitness evaluation
+     * @param nClasses Number of classes 
+     * @param initial_chr Initial chromosome
+     * 
      */
     public EMD (long seed, float[][] dataset, float [][] cut_points, int eval, int popLength, 
-    		float restart_per, float alpha_fitness, float beta_fitness, float pr0to1Rec, 
-    		float pr0to1Div, int nClasses, boolean[][] initial_pop, boolean doReduction, float reductionRate) {
+    		float restart_per, float alpha_fitness, int nClasses, boolean[] initial_chr) {
     	
     	this.seed = seed;
     	this.dataset = dataset;
@@ -77,12 +81,7 @@ public class EMD implements Serializable{
     	pop_length = popLength;
     	r = restart_per;
     	alpha = alpha_fitness;
-    	beta = beta_fitness;
-    	prob1to0Rec = pr0to1Rec;
-    	prob1to0Div = pr0to1Div;
     	this.nClasses = nClasses;
-    	this.doReduction = doReduction;
-    	pReduction = reductionRate;
     	
     	max_cut_points = 0;
     	for (int i=0; i< cut_points.length; i++) {
@@ -97,33 +96,33 @@ public class EMD implements Serializable{
     	
     	population = new ArrayList <Chromosome> (pop_length);
     	best_fitness = 100f;
-    	if(initial_pop == null) {
-    		for (int i = 0; i < pop_length; i++)
-    			population.add(new Chromosome(n_cut_points, true));
-				
+    	if(initial_chr == null) {
+    		this.initial_chr = new Chromosome (n_cut_points, true);
     	} else {
-			for (int i = 0; i < pop_length; i++) {
-				if(i > (initial_pop.length - 1))
-					population.add(new Chromosome(n_cut_points, true));
-				else
-					population.add(new Chromosome(initial_pop[i]));
-			}
+    		if(initial_chr.length == max_cut_points)
+        		this.initial_chr = new Chromosome (initial_chr);
+        	else 
+        		this.initial_chr = new Chromosome (n_cut_points, true);
     	}
-
-    	baseTrain = computeBaseTrain(); 
-    	evalPopulation();
-    	   	
+    	
+    	baseTrain = computeBaseTrain();
+    	
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, boolean[][] initial_pop, float alpha, int nEval, int nClasses, boolean doReduction, float reductionRate) {    	
+    public EMD (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses) {    	
     	this(964534618L, current_dataset, cut_points, nEval, 
-    			50, .8f, alpha, 1-alpha, .25f, .05f, nClasses, initial_pop, doReduction, reductionRate);
+    			50, .8f, .7f, nClasses, null);
     }
     
-    public EMD (float[][] current_dataset, float [][] cut_points, int nEval, int nClasses, boolean doReduction, float reductionRate) {    	
-    	this(964534618L, current_dataset, cut_points, nEval, 50, .8f, .7f, .3f, .25f, .05f, nClasses, null, doReduction, reductionRate);
+    public EMD (float[][] current_dataset, float [][] cut_points, boolean[] initial_chr, float alpha, int nEval, int nClasses) {
+    	this(964534618L, current_dataset, cut_points, nEval, 
+    			50, .8f, alpha, nClasses, initial_chr);
     }
     
+    /**
+     * Creates the attributes header for the subsequent evaluations on WEKA
+     * @return An attributes header for WEKA.
+     */
     private weka.core.Instances computeBaseTrain() {
     	int nInputs = dataset[0].length - 1;
     	/* WEKA data set initialization
@@ -163,24 +162,55 @@ public class EMD implements Serializable{
     }
     
     /**
-     * Run the CHC algorithm for the data in this population
-     * 
-     * @return	boolean array with the rules selected for the final population
+     * Run EMD algorithm on the input data
      */
     public void runAlgorithm() {
     	ArrayList <Chromosome> C_population;
     	ArrayList <Chromosome> Cr_population;
-    	boolean pop_changes;    	
+    	boolean pop_changes;
+    	
     	n_eval = 0;
     	threshold = (float) n_cut_points / 4.f;
     	n_restart_not_improving = 0;
+    	int n_reduction = 0;
     	int n_restart = 0;
+    	int next_reduction = 1;
     	boolean reduction = true;
 
     	int[] cut_points_log = new int[n_cut_points];   	
     	
+    	initPopulation();
+		evalPopulation();
 		
-		do {    		
+		do {
+    		
+    		// Reduction?
+    		reduction = (n_cut_points * (1 - pReduction) > PROPER_SIZE_CHROMOSOME) &&
+    				(n_eval / (max_eval * pEvaluationsForReduction) > next_reduction);
+    		if (reduction) {
+    			
+    			System.out.println("Reduction!");
+    			// We reduce the population, and it is not evaluated this time
+    			reduction(cut_points_log, ((Chromosome)population.get(0)).getIndividual());    	    	
+    			cut_points_log = new int[n_cut_points];
+    			next_reduction++;
+
+    			// Next time we do a restart 
+    			// (population do not need be evaluated, best chrom is keeped equal)
+    			restartPopulation();
+    			
+    			threshold = Math.round(r * (1.0 - r) * (float) n_cut_points);
+    	    	best_fitness = 100.0f;
+    	    	
+    	    	baseTrain = computeBaseTrain();
+    			evalPopulation();    			
+    			n_reduction++;
+    			if(n_cut_points * (1 - pReduction) <= PROPER_SIZE_CHROMOSOME) {
+    				System.out.println("No more reductions!");
+    			}
+    			Collections.sort(population);  
+    		}
+    		
     		// Select for crossover
     		C_population = randomSelection();
     		
@@ -214,20 +244,6 @@ public class EMD implements Serializable{
     		}
     		
     	} while ((n_eval < max_eval) && (n_restart_not_improving < 5));
-		
-		//reduction = (n_cut_points * (1 - pReduction) > PROPER_SIZE_CHROMOSOME) &&	(n_eval / (max_eval * pEvaluationsForReduction) > next_reduction);
-		if(doReduction) {
-			System.out.println("Reduction!");
-			// We reduce the population, and it is not evaluated this time
-			reduction(cut_points_log, ((Chromosome)population.get(0)).getIndividual());
-			// Next time we do a restart 
-			// (population do not need be evaluated, best chrom is keeped equal)
-			restartPopulation();
-			best_fitness = 100.0f;
-	    	
-	    	baseTrain = computeBaseTrain();
-			evalPopulation();
-		}
 
     	// The evaluations have finished now, so we select the individual with best fitness
     	Collections.sort(population);
@@ -246,15 +262,13 @@ public class EMD implements Serializable{
     	return best.getIndividual().length;
     }
     
-    public float[][] getReducedPoints() {
-    	return cut_points;
-    }
-    
-    public boolean[] getBestIndividual() {
-    	return best.getIndividual();
-    }
-    
-    public boolean[] getBestOriginalIndividual(){
+    /**
+     * Return the best individual after being executed the GA algorithm.
+     * If there have been a reduction in the chromosome, the process is reverted.
+     * 
+     * @return The best chromosome and the points selected.
+     */
+    public boolean[] getBestIndividual(){
     	if(max_cut_points == best.getIndividual().length) 
     		return best.getIndividual();
     	
@@ -284,11 +298,11 @@ public class EMD implements Serializable{
     /**
      * Creates several population individuals randomly. The first individual has all its values set to true
      */
-    /*private void initPopulation () {
+    private void initPopulation () {
     	population.add(initial_chr);    	
     	for (int i=1; i<pop_length; i++)
     		population.add(new Chromosome(n_cut_points));
-    }*/
+    }
     
     /**
      * Evaluates the population individuals. If a chromosome was previously evaluated we do not evaluate it again
@@ -392,6 +406,12 @@ public class EMD implements Serializable{
         }
     }
     
+    /**
+     * Reduction process applied on the chromosomes. Those points with the best rank are maintained.
+     * @param cut_points_log Log of last points selected.
+     * @param best_chr The best chromosome of the previous population
+     * @return A new population of reduced chromosomes.
+     */
     private void reduction(int[] cut_points_log, boolean[] best_chr){
 
     	ArrayList<RankingPoint> candidatePoints = new ArrayList<RankingPoint>(cut_points_log.length);

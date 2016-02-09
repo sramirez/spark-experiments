@@ -134,8 +134,7 @@ object MLExperimentUtils extends Logging {
 			} catch {
 				case iie: org.apache.hadoop.mapred.InvalidInputException =>
 					
-          train.count()
-          
+          train.count()          
           val initStartTime = System.nanoTime()
 					val discAlgorithm = discretize(train)
 					val discTime = (System.nanoTime() - initStartTime) / 1e9 
@@ -217,7 +216,7 @@ object MLExperimentUtils extends Logging {
         
 				(redTrain, redTest, FSTime)
 			} catch {
-				case iie: org.apache.hadoop.mapred.InvalidInputException =>          
+          case iie: org.apache.hadoop.mapred.InvalidInputException =>
           
           train.count()
           val initStartTime = System.nanoTime()
