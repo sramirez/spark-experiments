@@ -304,6 +304,10 @@ class InfoThSelector (
       logWarning("The input data is not directly cached, which may hurt performance if its"
         + " parent RDDs are also uncached.")
     }
+    
+    if(data.mapPartitions(it => Seq(it.size).toIterator).distinct().count() > 1) {
+      logError("The dataset must be split in equal-sized partitions.")
+    }
       
     // Feature vector must be composed of bytes, not the class
     val requireByteValues = (v: Vector) => {        
