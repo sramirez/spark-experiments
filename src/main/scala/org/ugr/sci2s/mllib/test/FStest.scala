@@ -33,8 +33,7 @@ object FStest {
       LabeledPoint(lp.label, discretizer.transform(lp.features)) 
     } 
     
-    val criterion = new InfoThCriterionFactory("mrmr")
-    val selector = InfoThSelector.train(criterion, discData)
+    val selector = new InfoThSelector(new InfoThCriterionFactory("mrmr")).fit(discData)
     
     val redData = discData.map { lp => 
       LabeledPoint(lp.label, selector.transform(lp.features)) 

@@ -129,11 +129,10 @@ object MainLocalMLlibTest {
 			println("*** Number of features to select: " + nToSelect)
 			println("*** Number of partitions to use in FS: " + npart)
       
-			val model = InfoThSelector.train(criterion, 
-		      data,
+			val selector = new InfoThSelector(criterion,
 		      nToSelect, // number of features to select
 		      npart) // number of features in pool
-		    model
+	    selector.fit(data)
 		}
 		
 		val featureSelection = params.get("fs") match {

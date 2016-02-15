@@ -184,7 +184,7 @@ object MLExperimentUtils extends Logging {
 		}
 		
 		private def featureSelection(
-				fs: (RDD[LabeledPoint]) => SelectorModel, 
+				fs: (RDD[LabeledPoint]) => InfoThSelectorModel, 
 				train: RDD[LabeledPoint], 
 				test: RDD[LabeledPoint], 
 				outputDir: String,
@@ -198,7 +198,7 @@ object MLExperimentUtils extends Logging {
 			try {
 				val selectedAtts = sc.textFile(outputDir + "/fs_scheme_" + iteration).filter(!_.isEmpty())
 										.map(parseSelectedAtts).collect				
-				val featureSelector = new SelectorModel(selectedAtts.map(_ - 1).sorted) // Must be transformed to indices (-1)
+				val featureSelector = new InfoThSelectorModel(selectedAtts.map(_ - 1).sorted) // Must be transformed to indices (-1)
 				
 				val FSTime = sc.textFile(outputDir + "/fs_time_" + iteration)
 						.filter(!_.isEmpty())
@@ -324,7 +324,7 @@ object MLExperimentUtils extends Logging {
 		def executeExperiment(
 		    sc: SparkContext,
 		    discretize: (Option[(RDD[LabeledPoint]) => DiscretizerModel], Boolean), 
-		    featureSelect: (Option[(RDD[LabeledPoint]) => SelectorModel], Boolean), 
+		    featureSelect: (Option[(RDD[LabeledPoint]) => InfoThSelectorModel], Boolean), 
 		    classify:  Option[(RDD[LabeledPoint], Map[Int, Int]) => ClassificationModelAdapter],
         initialArity: Map[Int, Int],
 		    inputData: (Any, String, Boolean), 
