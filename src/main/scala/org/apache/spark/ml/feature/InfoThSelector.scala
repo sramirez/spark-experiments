@@ -43,8 +43,7 @@ private[feature] trait InfoThSelectorParams extends Params
    * @group param
    */
   final val selectCriterion = new Param[String](this, "selectCriterion",
-    "Information Theoretic criterion used to rank the features.",
-    ParamValidators.gtEq(1))
+    "Information Theoretic criterion used to rank the features (mrmr, cmim, mim, icap, ...).")
   setDefault(selectCriterion -> "mrmr")
   
   /**
@@ -56,7 +55,7 @@ private[feature] trait InfoThSelectorParams extends Params
   final val numTopFeatures = new IntParam(this, "numTopFeatures",
     "Number of features that selector will select, ordered by statistics value descending. If the" +
       " number of features is < numTopFeatures, then this will select all features.",
-    ParamValidators.gtEq(2))
+    ParamValidators.gtEq(1))
   setDefault(numTopFeatures -> 25)
   
   /**
@@ -66,7 +65,7 @@ private[feature] trait InfoThSelectorParams extends Params
    */
   final val nPartitions = new IntParam(this, "nPartitions",
     "Number of partitions to use after the data matrix is transformed to a columnar format.",
-    ParamValidators.gtEq(3))
+    ParamValidators.gtEq(0))
   setDefault(nPartitions -> 0)
   
   /** @group getParam */
