@@ -42,8 +42,17 @@ private[feature] trait InfoThSelectorParams extends Params
    * Information Theoretic criterion used to rank the features. The default value is the criterion mRMR.
    * @group param
    */
+  
+  val MIM = "mim"
+  val MIFS = "mifs"
+  val JMI  = "jmi"
+  val MRMR = "mrmr"
+  val ICAP = "icap"
+  val CMIM = "cmim"
+  val IF   = "if"
+
   final val selectCriterion = new Param[String](this, "selectCriterion",
-    "Information Theoretic criterion used to rank the features (mrmr, cmim, mim, icap, ...).")
+    "Information Theoretic criterion used to rank the features. The criterion to be chosen are: (mim, mifs, jmi, mrmr, icap, cmim, if).")
   setDefault(selectCriterion -> "mrmr")
   
   /**
