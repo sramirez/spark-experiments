@@ -2,11 +2,8 @@ package org.ugr.sci2s.mllib.test
 
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkConf
-
-// this is used to implicitly convert an RDD to a DataFrame.
-
 import org.apache.spark.mllib.linalg.Vectors
-import org.apache.spark.ml.feature.InfoThSelector
+import org.apache.spark.ml.feature._
 
 object FSMLtest {
 
@@ -26,7 +23,15 @@ object FSMLtest {
     
     val df = sc.parallelize(data, 1).toDF("id", "features", "clicked")
     
-    val selector = new InfoThSelector()
+    val discretizer = new MDLPDiscretizer()
+      .setMaxBins(10)
+      .setInputCol("features")
+      .setLabelCol("clicked")
+      .setOutputCol("buckedFeatures")
+      
+    val result = discretizer.fit(df).transform(df)
+    
+    /*val selector = new InfoThSelector()
       .setSelectCriterion("mrmr")
       .setNPartitions(1)
       .setNumTopFeatures(1)
@@ -34,7 +39,7 @@ object FSMLtest {
       .setLabelCol("clicked")
       .setOutputCol("selectedFeatures")
     
-    val result = selector.fit(df).transform(df)
+    val result = selector.fit(df).transform(df)*/
     result.show()
     
   }
