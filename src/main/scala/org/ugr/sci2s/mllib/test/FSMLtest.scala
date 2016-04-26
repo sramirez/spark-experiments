@@ -25,6 +25,7 @@ object FSMLtest {
     
     val discretizer = new MDLPDiscretizer()
       .setMaxBins(10)
+      .setMaxByPart(10000)
       .setInputCol("features")
       .setLabelCol("clicked")
       .setOutputCol("buckedFeatures")
